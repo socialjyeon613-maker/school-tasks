@@ -88,6 +88,8 @@ export interface SchoolEvent {
   requires_participation: boolean;
   /** 여러 날 일정에서 날짜마다 출석을 따로 받을지 */
   daily_participation: boolean;
+  /** 진행 명단 공개 범위 — assignees(기본) | school */
+  roster_visibility: "assignees" | "school";
   due_at: string | null;
   owner_id: string | null;
   created_by: string | null;

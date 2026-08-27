@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -672,3 +672,77 @@ const keys = Object.keys(cols.rows[0] ?? {})
 const leaked = keys.filter(k => /student|name|number|reason/i.test(k))
 console.log(`   ${leaked.length === 0 ? '✅ 피드에 학생 정보 없음' : '❌ 학생 정보 노출: '+leaked}`)
 console.log(`   피드 항목: ${keys.join(', ')}`)
+
+console.log('\n=== 21. 진행 명단 · 공개 범위 (14) ===')
+await asUser('head')
+const { id: track } = await one(`select create_event('${yearId}', '2027 과학고 진학', '2026-12-01'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, array['${U.hr1}']::uuid[], '') as id`)
+
+await db.exec(`select set_event_stages('${track}', '[
+  {"name":"준비","kind":"active"},{"name":"서류제출","kind":"active"},
+  {"name":"면접","kind":"active"},{"name":"합격","kind":"success"},
+  {"name":"불합격","kind":"fail"}]'::jsonb)`)
+const stages = await db.query(`select name, kind from event_stages where event_id='${track}' order by position`)
+console.log(`   ✅ 단계 ${stages.rows.length}개: ${stages.rows.map(r=>r.name).join(' → ')}`)
+
+// 1반 1명 + 2반 2명 (반을 가로지르는 명단)
+const rs1 = await db.query(`select id, name from students where classroom_id='${cls['3-1']}' order by number limit 1`)
+const rs2 = await db.query(`select id, name from students where classroom_id='${cls['3-2']}' order by number limit 2`)
+const picked = [...rs1.rows, ...rs2.rows]
+await db.query(`select add_roster_students($1, $2::uuid[])`, [track, picked.map(r=>r.id)])
+console.log(`   ✅ 명단 ${picked.length}명 (1반 1 + 2반 2)`)
+
+// 두 명을 서류제출로 일괄 이동
+const docId = (await one(`select id from event_stages where event_id='${track}' and name='서류제출'`)).id
+await db.query(`select set_roster_stage($1, $2::uuid[], $3, '12/9 접수')`,
+  [track, [picked[0].id, picked[1].id], docId])
+console.log('   ✅ 2명 일괄 이동 → 서류제출')
+
+const rsum = await db.query(`select stage_name, count from event_roster_summary('${track}')`)
+console.log(`   요약: ${rsum.rows.map(r=>`${r.stage_name} ${r.count}`).join(' / ')}`)
+
+console.log('\n   -- 기본 A (담당자만) --')
+const rosterSeen = async (u) => {
+  await asAuthed(u)
+  try {
+    const r = await db.query(`select classroom_name, student_name from event_roster_list('${track}')`)
+    return r.rows.map(x=>`${x.classroom_name} ${x.student_name}`)
+  } catch (e) { return ['차단:'+e.message] }
+}
+console.log(`   부장(담당자 지정자):  ${(await rosterSeen('head')).join(', ')}`)
+console.log(`   3-1 담임(담당자):     ${(await rosterSeen('hr1')).join(', ')}`)
+console.log(`   3-2 담임(무관):       ${(await rosterSeen('hr2')).join(', ')}`)
+console.log(`   비담임:               ${(await rosterSeen('nonhr')).join(', ') || '(없음)'}`)
+
+console.log('\n   -- 옵션 C (학교 전체) 로 변경 --')
+await asUser('head')
+await db.query(`select set_roster_visibility($1,'school')`, [track])
+console.log(`   3-2 담임:             ${(await rosterSeen('hr2')).join(', ')}`)
+console.log(`   비담임:               ${(await rosterSeen('nonhr')).join(', ')}`)
+
+// 일반 교사는 공개 범위를 못 바꿈
+await asUser('hr2')
+try {
+  await db.query(`select set_roster_visibility($1,'assignees')`, [track])
+  console.log('   ❌ 일반 담임이 공개 범위를 바꿈')
+} catch (e) { console.log(`   ✅ 공개 범위 변경은 부장·관리자만: ${e.message}`) }
+
+// 담당자 아닌 사람은 단계를 못 옮김
+await asUser('hr2')
+try {
+  await db.query(`select set_roster_stage($1, $2::uuid[], $3)`, [track, [picked[0].id], docId])
+  console.log('   ❌ 무관한 담임이 단계를 옮김')
+} catch (e) { console.log(`   ✅ 단계 이동은 담당자만: ${e.message}`) }
+
+// 이력
+await asAuthed('head')
+const rhist = await db.query(`select from_stage, to_stage, note from roster_history($1,$2)`, [track, picked[0].id])
+console.log(`   ✅ 이력: ${rhist.rows.map(r=>`${r.from_stage ?? '(추가)'}→${r.to_stage}${r.note?` "${r.note}"`:''}`).join(', ')}`)
+
+// 외부인
+await asAuthed('outsider')
+try {
+  await db.query(`select * from event_roster_list('${track}')`)
+  console.log('   ❌ 외부인이 명단을 봄')
+} catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }

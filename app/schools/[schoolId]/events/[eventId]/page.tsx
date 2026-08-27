@@ -15,6 +15,7 @@ import type {
 } from "@/lib/types";
 import ParticipationGrid from "./participation-grid";
 import Assignments from "./assignments";
+import RosterBoard, { type RosterRow, type Stage } from "./roster-board";
 import Attachments from "./attachments";
 import Comments from "./comments";
 import DateTabs from "./date-tabs";
@@ -166,6 +167,24 @@ export default async function EventPage({
   }
 
   const canEdit = canEditEvent(ctx, ev);
+
+  // ── 진행 명단 (과학고 진학처럼 반을 가로지르는 학생 관리) ──
+  const [{ data: stageRows }, { data: rosterRows }, { data: isAssignee }] =
+    await Promise.all([
+      supabase.rpc("event_roster_summary", { p_event: eventId }),
+      supabase.rpc("event_roster_list", { p_event: eventId }),
+      supabase
+        .from("event_assignments")
+        .select("user_id")
+        .eq("event_id", eventId)
+        .eq("user_id", ctx.userId)
+        .maybeSingle(),
+    ]);
+
+  const stages = (stageRows ?? []) as Stage[];
+  const roster = (rosterRows ?? []) as RosterRow[];
+  // 명단을 고칠 수 있는가 = 일정 편집권자 또는 이 일감 담당자 (DB의 can_manage_roster 와 같은 규칙)
+  const canManageRoster = canEdit || Boolean(isAssignee);
 
   const candidates = (memberRows ?? []).map((m) => {
     const p = firstOf(m.profile);
@@ -380,6 +399,19 @@ export default async function EventPage({
             initial={marks}
           />
         </section>
+      )}
+
+      {(stages.length > 0 || canManageRoster) && (
+        <RosterBoard
+          eventId={eventId}
+          schoolId={schoolId}
+          yearId={ctx.year.id}
+          stages={stages}
+          rows={roster}
+          canManage={canManageRoster}
+          canSetVisibility={ctx.isHead || ctx.isAdmin}
+          visibility={(ev.roster_visibility ?? "assignees") as "assignees" | "school"}
+        />
       )}
 
       <Assignments
