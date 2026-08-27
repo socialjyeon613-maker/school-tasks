@@ -21,6 +21,7 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 12. `12_audit_softdelete.sql` — 변경 이력 + 휴지통
 13. `13_search_ical.sql` — 통합 검색 + 캘린더 구독
 14. `14_roster.sql` — 진행 명단 (반을 가로지르는 학생 단계 관리)
+15. `15_roster_search.sql` — 명단에 담을 학생을 학년 단위로 찾기
 
 > 14 의 명단 공개 범위는 일감마다 정합니다.
 > `assignees`(기본) 는 담당자 · 부장 · 관리자만, `school` 은 전 교직원.

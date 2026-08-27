@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -746,3 +746,43 @@ try {
   await db.query(`select * from event_roster_list('${track}')`)
   console.log('   ❌ 외부인이 명단을 봄')
 } catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }
+
+console.log('\n=== 22. 명단에 담을 학생 찾기 — 학년 단위 (15) ===')
+// 3-1 담임(hr1)이 담당자인 일감. 예전에는 3-2 학생을 못 찾았습니다.
+await asAuthed('hr1')
+const cand = await db.query(`select classroom_name, student_name from search_roster_candidates($1,'학생')`, [track])
+const candClasses = [...new Set(cand.rows.map(r=>r.classroom_name))].sort()
+console.log(`   3-1 담임(담당자)이 찾은 반: ${candClasses.join(', ')} (${cand.rows.length}명)`)
+console.log(`   ${candClasses.includes('3-2') ? '✅ 같은 학년 다른 반도 찾힘' : '❌ 아직 자기 반만'}`)
+
+// 이미 담긴 학생은 안 나와야
+const already = await one(`select count(*)::int n from event_roster where event_id='${track}'`)
+console.log(`   (명단에 이미 ${already.n}명 — 검색 결과에서 제외됨)`)
+
+// 담당자가 아니면 검색 자체가 막힘
+await asAuthed('hr2')
+try {
+  await db.query(`select * from search_roster_candidates($1,'학생')`, [track])
+  console.log('   ❌ 담당자가 아닌데 검색됨')
+} catch (e) { console.log(`   ✅ 담당자 아니면 검색 불가: ${e.message}`) }
+
+// 범위 밖 학생은 담기지 않아야 (화면 우회 방지)
+await asUser('admin')
+const { id: y3 } = await one(`insert into academic_years (school_id, year, name, is_current)
+  values ('${school}', 2099, '2099학년도', false) returning id`)
+await db.exec(`select create_classrooms('${y3}', 1, 1)`)
+const otherCls = await one(`select id from classrooms where academic_year_id='${y3}' limit 1`)
+await db.exec(`select import_students('${otherCls.id}', '[{"number":1,"name":"딴학년학생"}]'::jsonb)`)
+const alien = await one(`select id from students where classroom_id='${otherCls.id}'`)
+
+await asAuthed('hr1')
+const added = await db.query(`select add_roster_students($1, $2::uuid[]) as n`, [track, [alien.id]])
+console.log(`   ${added.rows[0].n === 0 ? '✅ 범위 밖 학생은 담기지 않음 (id 를 직접 보내도)' : '❌ 담겼음'}`)
+
+console.log('\n   -- 넓어지지 않아야 하는 곳 --')
+await asAuthed('hr1')
+const stillMine = await db.query(`select distinct c.name from students s join classrooms c on c.id=s.classroom_id`)
+console.log(`   학생 조회:   ${stillMine.rows.map(r=>r.name).join(', ')} ${stillMine.rows.length===1?'✅ 자기 반만':'❌ 넓어짐'}`)
+const srch = await db.query(`select subtitle from search_school('${school}','학생') where kind='student'`)
+const srchCls = [...new Set(srch.rows.map(r=>r.subtitle.split(' ')[0]))]
+console.log(`   통합 검색:   ${srchCls.join(', ')} ${srchCls.length===1?'✅ 자기 반만':'❌ 넓어짐'}`)

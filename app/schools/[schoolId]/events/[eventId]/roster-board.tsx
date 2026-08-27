@@ -65,7 +65,6 @@ const KIND_STYLE: Record<string, string> = {
 export default function RosterBoard({
   eventId,
   schoolId,
-  yearId,
   stages,
   rows,
   canManage,
@@ -74,7 +73,6 @@ export default function RosterBoard({
 }: {
   eventId: string;
   schoolId: string;
-  yearId: string;
   stages: Stage[];
   rows: RosterRow[];
   canManage: boolean;
@@ -130,29 +128,38 @@ export default function RosterBoard({
       })
     );
 
+  /**
+   * 학년 단위로 찾습니다.
+   * students 테이블을 직접 읽으면 자기 반만 나오므로,
+   * 학년 범위를 검사하는 RPC 를 씁니다.
+   */
   async function search(text: string) {
     setQ(text);
     if (text.trim().length < 1) return setFound([]);
 
-    const { data } = await createClient()
-      .from("students")
-      .select("id, name, number, classroom:classrooms(name)")
-      .eq("academic_year_id", yearId)
-      .eq("status", "enrolled")
-      .ilike("name", `%${text.trim()}%`)
-      .limit(20);
+    const { data, error } = await createClient().rpc("search_roster_candidates", {
+      p_event: eventId,
+      p_q: text.trim(),
+    });
 
-    const already = new Set(rows.map((r) => r.student_id));
+    if (error) {
+      setError("학생을 찾지 못했습니다. " + error.message);
+      return setFound([]);
+    }
     setFound(
-      (data ?? [])
-        .filter((s) => !already.has(s.id))
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          number: s.number,
-          classroom_name:
-            (Array.isArray(s.classroom) ? s.classroom[0] : s.classroom)?.name ?? "",
-        }))
+      (data ?? []).map(
+        (s: {
+          student_id: string;
+          student_name: string;
+          classroom_name: string;
+          student_no: number;
+        }) => ({
+          id: s.student_id,
+          name: s.student_name,
+          number: s.student_no,
+          classroom_name: s.classroom_name,
+        })
+      )
     );
   }
 
@@ -396,7 +403,7 @@ export default function RosterBoard({
                 autoFocus
                 value={q}
                 onChange={(e) => search(e.target.value)}
-                placeholder="학생 이름으로 찾기"
+                placeholder="학생 이름으로 찾기 (같은 학년)"
                 className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
               />
               <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto">
@@ -417,7 +424,7 @@ export default function RosterBoard({
                 ))}
                 {q.trim() && found.length === 0 && (
                   <li className="px-2 py-3 text-center text-xs text-slate-400">
-                    찾는 학생이 없습니다. 담당하는 반의 학생만 검색됩니다.
+                    찾는 학생이 없습니다. 같은 학년 학생만 검색됩니다.
                   </li>
                 )}
               </ul>

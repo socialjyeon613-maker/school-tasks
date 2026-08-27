@@ -405,7 +405,6 @@ export default async function EventPage({
         <RosterBoard
           eventId={eventId}
           schoolId={schoolId}
-          yearId={ctx.year.id}
           stages={stages}
           rows={roster}
           canManage={canManageRoster}
