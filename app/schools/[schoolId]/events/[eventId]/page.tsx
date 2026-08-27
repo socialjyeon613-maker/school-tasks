@@ -66,17 +66,34 @@ export default async function EventPage({
   let classrooms: Array<{ id: string; name: string }> = [];
 
   if (ev.requires_participation) {
-    const [s, c, a, st] = await Promise.all([
-      supabase.from("v_participation_summary").select("*").eq("event_id", eventId).maybeSingle(),
-      supabase.from("v_participation_by_classroom").select("*").eq("event_id", eventId).order("classroom_name"),
+    const [c, a, st] = await Promise.all([
+      // 반별 집계는 '숫자만' 이라 학교 구성원 전체가 봅니다 (05_teacher_access.sql).
+      supabase.rpc("event_classroom_status", { p_event: eventId }),
+      // 불참자 '이름'은 그대로 잠겨 있습니다 — 자기 반 · 학년부장 · 교장/교감만.
       supabase.from("v_absentees").select("*").eq("event_id", eventId).order("classroom_name"),
-      // RLS 때문에 내가 볼 수 있는 학생만 돌아옵니다.
+      // 참여 체크 그리드용. RLS 때문에 내가 볼 수 있는 학생만 돌아옵니다.
       supabase.from("v_event_students").select("*").eq("event_id", eventId).order("number"),
     ]);
 
-    summary = s.data as ParticipationSummary | null;
     byClass = (c.data ?? []) as ClassroomParticipation[];
     absentees = (a.data ?? []) as Absentees[];
+
+    // 학년/전교 총원은 위 집계를 그대로 합산합니다.
+    if (byClass.length) {
+      const incomplete = byClass.filter((x) => !x.is_complete);
+      summary = {
+        event_id: eventId,
+        title: ev.title,
+        start_date: ev.start_date,
+        total: byClass.reduce((n, x) => n + x.total, 0),
+        attended: byClass.reduce((n, x) => n + x.attended, 0),
+        absent: byClass.reduce((n, x) => n + x.absent, 0),
+        pending: byClass.reduce((n, x) => n + x.pending, 0),
+        classroom_count: byClass.length,
+        classroom_done: byClass.length - incomplete.length,
+        pending_classrooms: incomplete.map((x) => x.classroom_name).join(", "),
+      };
+    }
     students = (st.data ?? []) as typeof students;
 
     const ids = [...new Set(students.map((x) => x.classroom_id))];
@@ -97,8 +114,12 @@ export default async function EventPage({
     }
   }
 
+  // 기본 선택: URL 지정 → 활성 보직의 반 → 첫 번째
   const selectedClass =
-    classrooms.find((c) => c.id === sp.class) ?? classrooms[0] ?? null;
+    classrooms.find((c) => c.id === sp.class) ??
+    classrooms.find((c) => c.id === ctx.activeRole?.classroomId) ??
+    classrooms[0] ??
+    null;
 
   // ── 업무 배정 후보 (교직원 + 담임 정보) ──────────────────
   const [{ data: memberRows }, { data: roleRows }, { data: gradeRows }] =
@@ -203,7 +224,10 @@ export default async function EventPage({
       {/* 부장 현황판 */}
       {ev.requires_participation && summary && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white p-6">
-          <h2 className="mb-3 font-semibold">학생 참여 현황</h2>
+          <h2 className="mb-1 font-semibold">학생 참여 현황</h2>
+          <p className="mb-3 text-xs text-slate-500">
+            모든 반의 인원수를 볼 수 있습니다. 입력과 학생 이름은 담당 반만 열립니다.
+          </p>
 
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="대상" value={summary.total} />
@@ -228,6 +252,7 @@ export default async function EventPage({
                 <th className="border border-slate-200 px-3 py-1.5 text-right">대상</th>
                 <th className="border border-slate-200 px-3 py-1.5 text-right">참여</th>
                 <th className="border border-slate-200 px-3 py-1.5 text-right">불참</th>
+                <th className="border border-slate-200 px-3 py-1.5 text-right">미입력</th>
                 <th className="border border-slate-200 px-3 py-1.5">불참자</th>
               </tr>
             </thead>
@@ -238,15 +263,29 @@ export default async function EventPage({
                   <tr key={c.classroom_id}>
                     <td className="border border-slate-200 px-3 py-1.5 font-medium">
                       {c.classroom_name}
-                      {!c.is_complete && (
-                        <span className="ml-1 text-xs text-amber-600">미입력</span>
+                      {c.can_edit && (
+                        <span className="ml-1 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                          내 반
+                        </span>
                       )}
                     </td>
                     <td className="border border-slate-200 px-3 py-1.5 text-right">{c.total}</td>
                     <td className="border border-slate-200 px-3 py-1.5 text-right">{c.attended}</td>
                     <td className="border border-slate-200 px-3 py-1.5 text-right">{c.absent}</td>
+                    <td
+                      className={`border border-slate-200 px-3 py-1.5 text-right ${
+                        c.pending > 0 ? "font-medium text-amber-700" : "text-slate-400"
+                      }`}
+                    >
+                      {c.pending}
+                    </td>
                     <td className="border border-slate-200 px-3 py-1.5 text-slate-600">
-                      {abs?.names ?? "없음"}
+                      {/* 이름은 볼 수 있는 반만. 다른 반은 인원수까지만 보입니다. */}
+                      {c.can_edit || abs
+                        ? (abs?.names ?? "없음")
+                        : c.absent > 0
+                          ? `${c.absent}명`
+                          : "없음"}
                     </td>
                   </tr>
                 );

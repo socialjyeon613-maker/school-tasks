@@ -127,17 +127,19 @@ export interface Participation {
   reason: string;
 }
 
-/** v_participation_by_classroom */
+/** event_classroom_status() — 반별 집계. 학생 이름은 포함하지 않습니다. */
 export interface ClassroomParticipation {
-  event_id: string;
   classroom_id: string;
   classroom_name: string;
+  class_no: number;
   grade_id: string;
   total: number;
   attended: number;
   absent: number;
   pending: number;
   is_complete: boolean;
+  /** 내가 이 반의 입력을 고칠 수 있는가 */
+  can_edit: boolean;
 }
 
 /** v_participation_summary */
@@ -163,6 +165,19 @@ export interface Absentees {
   names: string;
 }
 
+/** 내가 맡은 보직 하나 (한 사람이 여럿 가질 수 있습니다) */
+export interface MyStaffRole {
+  id: string;
+  role: StaffRoleKind;
+  /** '3-2', '3학년', '생활인권부' */
+  scopeName: string;
+  /** '3-2 담임' */
+  label: string;
+  classroomId: string | null;
+  gradeId: string | null;
+  departmentId: string | null;
+}
+
 /** 화면에서 쓰는 현재 사용자의 학교 내 위치 */
 export interface SchoolContext {
   school: School;
@@ -170,14 +185,25 @@ export interface SchoolContext {
   /** 로그인한 교직원의 id */
   userId: string;
   role: MemberRole;
+  /** 내가 맡은 보직 전체 — 부장이면서 담임일 수 있습니다 */
+  roles: MyStaffRole[];
+  /**
+   * 지금 어떤 보직 시점으로 화면을 볼지.
+   * ※ 권한이 아니라 '기본값'만 바꿉니다. 실제 권한은 언제나 DB의 RLS 가 정합니다.
+   */
+  activeRole: MyStaffRole | null;
   /** 담임·부담임인 반 */
   homeroomClassroomIds: string[];
   /** 부장인 학년 */
   headGradeIds: string[];
-  /** 부장 또는 관리자 — 일정을 등록할 수 있는가 */
+  isHead: boolean;
+  /** 일정 등록 — 이제 학교 구성원 누구나 가능합니다 */
   canCreateEvent: boolean;
   isAdmin: boolean;
 }
+
+/** 활성 보직을 기억하는 쿠키 이름 */
+export const ACTIVE_ROLE_COOKIE = (schoolId: string) => `active-role-${schoolId}`;
 
 /** 보직 — 한 사람이 여러 개를 동시에 가집니다 (예: 3학년 부장 + 3-2 담임) */
 export const STAFF_ROLE_LABEL: Record<StaffRoleKind, string> = {

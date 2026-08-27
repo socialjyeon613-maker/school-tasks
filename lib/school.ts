@@ -1,9 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/supabase/auth";
 import { firstOf } from "@/lib/format";
+import { cookies } from "next/headers";
 import {
+  ACTIVE_ROLE_COOKIE,
   STAFF_ROLE_LABEL,
   type MemberRole,
+  type MyStaffRole,
   type SchoolContext,
   type StaffRoleKind,
 } from "@/lib/types";
@@ -112,21 +115,48 @@ export async function getSchoolContext(
     .maybeSingle();
   if (!member) return null;
 
-  const { data: roles } = await supabase
+  const { data: roleRows } = await supabase
     .from("staff_roles")
-    .select("role, grade_id, classroom_id, department_id")
+    .select(
+      "id, role, grade_id, classroom_id, department_id, grade:grades(name), classroom:classrooms(name), department:departments(name)"
+    )
     .eq("academic_year_id", year.id)
     .eq("user_id", user.id);
 
-  const homeroomClassroomIds = (roles ?? [])
-    .filter((r) => r.classroom_id && (r.role === "homeroom" || r.role === "co_homeroom"))
-    .map((r) => r.classroom_id as string);
+  const roles: MyStaffRole[] = (roleRows ?? []).map((r) => {
+    const kind = r.role as StaffRoleKind;
+    const scopeName =
+      firstOf(r.classroom)?.name ??
+      firstOf(r.grade)?.name ??
+      firstOf(r.department)?.name ??
+      "";
+    return {
+      id: r.id,
+      role: kind,
+      scopeName,
+      label: `${scopeName} ${STAFF_ROLE_LABEL[kind] ?? kind}`.trim(),
+      classroomId: r.classroom_id,
+      gradeId: r.grade_id,
+      departmentId: r.department_id,
+    };
+  });
 
-  const headGradeIds = (roles ?? [])
-    .filter((r) => r.role === "head" && r.grade_id)
-    .map((r) => r.grade_id as string);
+  // 보직이 여럿이면 쿠키에 기억해 둔 것을, 없으면 첫 번째를 씁니다.
+  // 어디까지나 화면 기본값이고 권한과는 무관합니다.
+  const cookieStore = await cookies();
+  const savedId = cookieStore.get(ACTIVE_ROLE_COOKIE(schoolId))?.value;
+  const activeRole =
+    roles.find((r) => r.id === savedId) ?? roles[0] ?? null;
 
-  const isHead = (roles ?? []).some((r) => r.role === "head");
+  const homeroomClassroomIds = roles
+    .filter((r) => r.classroomId && (r.role === "homeroom" || r.role === "co_homeroom"))
+    .map((r) => r.classroomId as string);
+
+  const headGradeIds = roles
+    .filter((r) => r.role === "head" && r.gradeId)
+    .map((r) => r.gradeId as string);
+
+  const isHead = roles.some((r) => r.role === "head");
   const isAdmin = ["principal", "vice_principal", "admin"].includes(member.role);
 
   return {
@@ -134,9 +164,13 @@ export async function getSchoolContext(
     year,
     userId: user.id,
     role: member.role as MemberRole,
+    roles,
+    activeRole,
     homeroomClassroomIds,
     headGradeIds,
-    canCreateEvent: isHead || isAdmin,
+    isHead,
+    // 일정 등록은 학교 구성원 누구나 (05_teacher_access.sql)
+    canCreateEvent: true,
     isAdmin,
   };
 }

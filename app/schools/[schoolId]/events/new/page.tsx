@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
 import EventForm from "../event-form";
@@ -14,7 +14,6 @@ export default async function NewEventPage({
   const sp = await searchParams;
   const ctx = await getSchoolContext(schoolId);
   if (!ctx) notFound();
-  if (!ctx.canCreateEvent) redirect(`/schools/${schoolId}/calendar`);
 
   const supabase = await createClient();
   const [{ data: grades }, { data: classrooms }, { data: categories }, { data: periods }] =
@@ -32,7 +31,8 @@ export default async function NewEventPage({
         schoolId={schoolId}
         yearId={ctx.year.id}
         defaultDate={sp.date ?? ""}
-        defaultGradeId={sp.grade ?? ""}
+        defaultGradeId={sp.grade ?? ctx.activeRole?.gradeId ?? ""}
+        defaultClassroomId={ctx.activeRole?.classroomId ?? ""}
         grades={grades ?? []}
         classrooms={classrooms ?? []}
         categories={categories ?? []}

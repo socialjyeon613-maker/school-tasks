@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSchoolContext } from "@/lib/school";
 import { ROLE_LABEL } from "@/lib/types";
+import RoleSwitcher from "./role-switcher";
 
 export default async function SchoolLayout({
   children,
@@ -45,9 +46,18 @@ export default async function SchoolLayout({
             ))}
           </nav>
 
-          <span className="ml-auto rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-            {ROLE_LABEL[ctx.role]}
-          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {ctx.roles.length > 1 && ctx.activeRole && (
+              <RoleSwitcher
+                schoolId={schoolId}
+                roles={ctx.roles}
+                activeRoleId={ctx.activeRole.id}
+              />
+            )}
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+              {ctx.roles.length === 1 ? ctx.roles[0].label : ROLE_LABEL[ctx.role]}
+            </span>
+          </div>
         </div>
       </header>
 

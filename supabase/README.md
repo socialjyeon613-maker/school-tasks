@@ -10,6 +10,8 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 1. `01_schema.sql` — 학교 · 학년도 · 학년 · 반 · 부서 · 교직원 · 학생 · 초대 + RLS
 2. `02_events.sql` — 교시 · 분류(색상) · 일정 · 대상 · 담당배정 · 댓글 · 첨부 + RLS
 3. `03_participation.sql` — 학생 참여 + 집계 뷰 + Storage 버킷
+4. `04_event_edit.sql` — 일정 수정 RPC
+5. `05_teacher_access.sql` — 교사 일정 등록 + 반별 집계 공개
 
 > `create_school()` 은 `periods` / `event_categories` 에 기본값을 넣기 때문에
 > **3개 파일을 모두 실행한 뒤** 호출해야 합니다.
@@ -47,8 +49,13 @@ select create_event(
 | 교장 · 교감 · 관리자 | 전교 | 전교 | O |
 | 학년부장 (`head` + grade) | 해당 학년 | 해당 학년 | O |
 | 담임 (`homeroom` + classroom) | 자기 반 | 자기 반 | X |
-| 교과담당 (`subject` + classroom) | 해당 반 (조회만) | X | X |
-| 비담임 (부서 소속만) | **없음** | X | X |
+| 교과담당 (`subject` + classroom) | 해당 반 (조회만) | X | O |
+| 비담임 (부서 소속만) | **없음** | X | O |
+
+일정 등록은 구성원 누구나 할 수 있고, **수정·삭제는 만든 사람**(과 부장·관리자)만 합니다.
+
+반별 참여 **집계(숫자)** 는 모든 교직원이 봅니다 — `event_classroom_status()`.
+**학생 이름**(`v_absentees` · `students` · `participations`)은 위 표대로 잠겨 있습니다.
 
 학사일정 자체는 교직원 모두가 봅니다. 잠그는 대상은 **학생 개인정보**입니다.
 

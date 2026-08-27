@@ -40,6 +40,7 @@ export default function EventForm({
   yearId,
   defaultDate,
   defaultGradeId,
+  defaultClassroomId = "",
   grades,
   classrooms,
   categories,
@@ -50,6 +51,8 @@ export default function EventForm({
   yearId: string;
   defaultDate: string;
   defaultGradeId: string;
+  /** 담임이면 자기 반을 기본 대상으로 */
+  defaultClassroomId?: string;
   grades: Grade[];
   classrooms: Classroom[];
   categories: Category[];
@@ -91,9 +94,11 @@ export default function EventForm({
       : initial.gradeIds.length
         ? "grade"
         : "school"
-    : defaultGradeId
-      ? "grade"
-      : "school";
+    : defaultClassroomId
+      ? "classroom"
+      : defaultGradeId
+        ? "grade"
+        : "school";
 
   // 편집 모드면 기존 대상에서, 아니면 URL 기본값에서 학년을 정합니다.
   const initialGradeId =
@@ -101,11 +106,16 @@ export default function EventForm({
     (initial?.classroomIds.length
       ? classrooms.find((c) => c.id === initial.classroomIds[0])?.grade_id
       : undefined) ??
-    (defaultGradeId || grades[0]?.id || "");
+    (defaultGradeId ||
+      classrooms.find((c) => c.id === defaultClassroomId)?.grade_id ||
+      grades[0]?.id ||
+      "");
 
   const [scope, setScope] = useState<Scope>(initialScope);
   const [gradeId, setGradeId] = useState(initialGradeId);
-  const [classIds, setClassIds] = useState<string[]>(initial?.classroomIds ?? []);
+  const [classIds, setClassIds] = useState<string[]>(
+    initial?.classroomIds ?? (defaultClassroomId ? [defaultClassroomId] : [])
+  );
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -244,3 +244,52 @@ await asUser('admin')
 alive = await one(`select count(*)::int n from events where id='${ev}'`)
 const orphan = await one(`select count(*)::int n from participations where event_id='${ev}'`)
 console.log(`   ${alive.n === 0 ? '✅ 부장은 삭제 가능' : '❌ 부장이 삭제 못함'} / 참여기록 cascade 정리: ${orphan.n}건 남음`)
+
+console.log('\n=== 12. 교사 권한 확대 (05) ===')
+// 담임(부장 아님)이 일정을 등록할 수 있는가
+await asUser('hr1')
+let myEvent = null
+try {
+  const r = await one(`select create_event('${yearId}', '우리반 독서시간', '2024-12-16'::date, null,
+    null, 'academic', false, 1, 1, null, '교실', true,
+    array['${cls['3-1']}']::uuid[], '{}'::uuid[], '{}'::uuid[], null) as id`)
+  myEvent = r.id
+  console.log('   ✅ 담임이 직접 일정 등록 가능')
+} catch (e) { console.log(`   ❌ 담임이 등록 못함: ${e.message}`) }
+
+// 비담임(보건교사)도 가능해야 함
+await asUser('nonhr')
+try {
+  await db.exec(`select create_event('${yearId}', '보건교육', '2024-12-17'::date, null,
+    null, 'academic', true, null, null, null, '보건실', false,
+    '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], null)`)
+  console.log('   ✅ 비담임도 일정 등록 가능')
+} catch (e) { console.log(`   ❌ 비담임이 등록 못함: ${e.message}`) }
+
+// 남이 만든 일정은 못 고쳐야 함
+await asUser('hr2')
+try {
+  await db.exec(`select update_event('${myEvent}', '가로채기', '2024-12-16'::date)`)
+  console.log('   ❌ 남의 일정을 수정함 (버그)')
+} catch (e) { console.log(`   ✅ 남이 만든 일정 수정은 여전히 차단: ${e.message}`) }
+
+// 반별 집계는 모든 교직원에게, 이름은 여전히 자기 반만
+await asUser('hr1')
+await db.exec(`select set_classroom_participation('${myEvent}', '${cls['3-1']}', 'attended')`)
+await asAuthed('hr2')
+const st = await db.query(`select classroom_name, total, attended, pending, can_edit from event_classroom_status('${myEvent}')`)
+console.log(`   3-2 담임이 보는 다른 반 집계: ${st.rows.map(r=>`${r.classroom_name} ${r.attended}/${r.total}${r.can_edit?'(내 반)':''}`).join(', ')}`)
+const names = await db.query(`select classroom_name, names from v_absentees where event_id='${myEvent}'`)
+console.log(`   3-2 담임이 보는 3-1반 학생 이름: ${names.rows.length === 0 ? '없음 ✅ (이름은 여전히 잠김)' : '❌ 노출됨'}`)
+
+await asAuthed('nonhr')
+try {
+  const s2 = await db.query(`select count(*)::int n from event_classroom_status('${myEvent}')`)
+  console.log(`   ✅ 비담임도 반별 집계 조회 가능 (${s2.rows[0].n}개 반)`)
+} catch (e) { console.log(`   ❌ 비담임 집계 조회 실패: ${e.message}`) }
+
+await asAuthed('outsider')
+try {
+  await db.query(`select * from event_classroom_status('${myEvent}')`)
+  console.log('   ❌ 외부인이 집계를 봄 (버그)')
+} catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }
