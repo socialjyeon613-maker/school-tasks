@@ -27,6 +27,8 @@ export default async function SchoolLayout({
   const base = `/schools/${schoolId}`;
   const nav: Array<{ href: string; label: string; badge?: number }> = [
     { href: `${base}/calendar`, label: "학사일정" },
+    { href: `${base}/week`, label: "주간" },
+    { href: `${base}/timeline`, label: "간트" },
     { href: `${base}/my`, label: "내 할 일" },
     ...(ctx.canCreateEvent ? [{ href: `${base}/tasks`, label: "업무 현황" }] : []),
     {

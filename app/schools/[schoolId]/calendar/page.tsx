@@ -6,6 +6,7 @@ import { compactClassLabel, firstOf, monthDates, teacherColor, toISODate, weekda
 import { buildTargetIndex, matchesGrade, packRows, rowCells } from "@/lib/calendar";
 import { categoryStyle, type EventOnDate } from "@/lib/types";
 import MonthNav from "./month-nav";
+import ViewSwitch from "../view-switch";
 import NoticeList, { type NoticeItem } from "./notice-list";
 
 export default async function CalendarPage({
@@ -141,6 +142,8 @@ export default async function CalendarPage({
         <h1 className="text-lg font-bold">
           {y}년 {m}월 {gradeName} 학사일정
         </h1>
+
+        <ViewSwitch schoolId={schoolId} current="month" query={`grade=${gradeId}`} />
 
         <div className="flex gap-1">
           {(grades ?? []).map((g) => (

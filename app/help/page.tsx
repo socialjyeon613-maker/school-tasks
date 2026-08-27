@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 const SECTIONS = [
   { id: "start", label: "시작하기" },
   { id: "calendar", label: "학사일정 보기" },
+  { id: "views", label: "주간 · 간트" },
   { id: "add", label: "일정 등록" },
   { id: "participation", label: "학생 참여 체크" },
   { id: "task", label: "업무와 담당자" },
@@ -169,6 +170,35 @@ export default function HelpPage() {
               <li>왼쪽 <b>공지</b>는 게시 기간이 있는 알림글입니다. 기본 5개가 보이고 더 보기로 펼칩니다.</li>
               <li><b>인쇄</b> 단추를 누르면 표만 깔끔하게 출력됩니다.</li>
             </ul>
+          </Section>
+
+          <Section
+            id="views"
+            title="주간 · 간트로 보기"
+            lead="같은 일정을 다른 방식으로 봅니다. 화면 위 월간 · 주간 · 간트로 오갑니다."
+          >
+            <Shot
+              src="/help/week.png"
+              alt="주간 보기 — 교시 × 요일 시간표"
+              caption="세로가 교시, 가로가 요일. 늘 보시는 시간표와 같은 모양입니다. 여러 교시에 걸친 일정은 칸이 합쳐집니다."
+              height={619}
+            />
+            <p>
+              <b>주간</b>은 이번 주에 우리 학년이 무엇을 하는지 볼 때 씁니다.
+              주말에 아무 일정이 없으면 토 · 일 칸은 아예 나오지 않습니다.
+            </p>
+            <Shot
+              src="/help/timeline.png"
+              alt="간트 보기 — 기간 일정을 가로 막대로"
+              caption="공지 · 학사일정 · 업무로 묶여 나옵니다. 세로 붉은 선이 오늘입니다."
+              height={619}
+            />
+            <p>
+              <b>간트</b>는 <b>여러 날에 걸친 일정</b>이 서로 어떻게 겹치는지 볼 때
+              씁니다. 원서접수 기간과 수련회가 겹치는지, 공지 게시 기간이 언제
+              끝나는지 같은 것이 한눈에 보입니다. 달 밖으로 이어지는 일정은
+              ◀ ▶ 로 표시됩니다.
+            </p>
           </Section>
 
           <Section

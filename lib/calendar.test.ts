@@ -230,6 +230,76 @@ check("이동 안 함", () => {
   assert.equal(shiftDate("2025-12-10", "none", 1), "2025-12-10");
 });
 
+
+/* ------------------------------------------------------------------
+   주간 · 간트
+------------------------------------------------------------------ */
+import { barFor, clusterByPeriod, slotsFor, weekDates, weekStart } from "./week";
+
+console.log("\n주간 · 간트");
+
+check("주 시작은 월요일", () => {
+  assert.equal(weekStart("2026-12-10"), "2026-12-07"); // 목 → 월
+  assert.equal(weekStart("2026-12-07"), "2026-12-07"); // 월 → 그대로
+  assert.equal(weekStart("2026-12-13"), "2026-12-07"); // 일 → 그 주 월
+});
+check("한 주는 월~일 7일", () => {
+  const d = weekDates("2026-12-07");
+  assert.equal(d.length, 7);
+  assert.equal(d[0], "2026-12-07");
+  assert.equal(d[6], "2026-12-13");
+});
+
+check("겹치지 않으면 따로", () => {
+  const c = clusterByPeriod([ev("A", 1, 2), ev("B", 5, 6)], 7);
+  assert.equal(c.length, 2);
+  assert.deepEqual([c[0].from, c[0].to], [1, 2]);
+  assert.deepEqual([c[1].from, c[1].to], [5, 6]);
+});
+check("겹치면 한 칸에 모음", () => {
+  const c = clusterByPeriod([ev("A", 3, 4), ev("B", 4, 5)], 7);
+  assert.equal(c.length, 1);
+  assert.deepEqual([c[0].from, c[0].to], [3, 5]);
+  assert.equal(c[0].events.length, 2);
+});
+check("종일 일정은 교시 격자에서 제외", () => {
+  assert.equal(clusterByPeriod([ev("종일", null, null, true)], 7).length, 0);
+});
+check("교시 수를 넘으면 잘라냄", () => {
+  const c = clusterByPeriod([ev("A", 6, 9)], 7);
+  assert.equal(c[0].to, 7);
+});
+
+check("rowSpan 계산", () => {
+  const s = slotsFor(clusterByPeriod([ev("A", 3, 4)], 7), 7);
+  assert.equal(s[0].kind, "empty");
+  assert.equal(s[2].kind, "start");
+  assert.equal(s[2].kind === "start" && s[2].span, 2);
+  assert.equal(s[3].kind, "covered");
+  // 칸 수는 언제나 교시 수와 같아야 표가 안 깨집니다
+  assert.equal(s.length, 7);
+});
+
+check("간트 — 기간 안에 다 들어감", () => {
+  const b = barFor("2026-12-08", "2026-12-09", "2026-12-01", "2026-12-31")!;
+  assert.equal(Math.round(b.left * 31), 7);
+  assert.equal(Math.round(b.width * 31), 2);
+  assert.equal(b.clippedStart, false);
+});
+check("간트 — 하루짜리도 폭이 있음", () => {
+  const b = barFor("2026-12-10", "2026-12-10", "2026-12-01", "2026-12-31")!;
+  assert.ok(b.width > 0);
+});
+check("간트 — 앞뒤로 삐져나가면 표시", () => {
+  const b = barFor("2026-11-20", "2027-01-10", "2026-12-01", "2026-12-31")!;
+  assert.equal(b.left, 0);
+  assert.equal(b.width, 1);
+  assert.ok(b.clippedStart && b.clippedEnd);
+});
+check("간트 — 안 겹치면 null", () => {
+  assert.equal(barFor("2026-11-01", "2026-11-05", "2026-12-01", "2026-12-31"), null);
+});
+
 console.log(`
 ${passed}개 통과
 `);
