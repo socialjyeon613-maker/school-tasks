@@ -37,16 +37,31 @@ export default function ParticipationGrid({
   classroomName,
   students,
   initial,
+  onDate,
+  isDaily,
+  allDates,
 }: {
   eventId: string;
   classroomId: string;
   classroomName: string;
   students: Student[];
   initial: Marks;
+  /** 입력 대상 날짜 (매일 체크가 아니면 일정 시작일) */
+  onDate: string;
+  isDaily: boolean;
+  /** 매일 체크일 때 이 일정의 모든 날짜 */
+  allDates: string[];
 }) {
   const router = useRouter();
   const [marks, setMarks] = useState<Marks>(initial);
   const [dirty, setDirty] = useState(false);
+  // 날짜 탭을 옮기면 서버가 그 날짜의 기록을 새로 내려줍니다.
+  const [loadedDate, setLoadedDate] = useState(onDate);
+  if (loadedDate !== onDate) {
+    setLoadedDate(onDate);
+    setMarks(initial);
+    setDirty(false);
+  }
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -75,6 +90,30 @@ export default function ParticipationGrid({
     setDirty(true);
   }
 
+  /** 매일 체크 일정에서 모든 날짜를 한 번에 처리 (수련회 3일 전원 참석 깔기) */
+  async function markEveryDate(status: ParticipationStatus) {
+    const supabase = createClient();
+    const { error } = await supabase.rpc("set_classroom_participation", {
+      p_event: eventId,
+      p_classroom: classroomId,
+      p_status: status,
+      p_overwrite: true,
+      p_all_dates: true,
+    });
+
+    if (error) {
+      setMessage(
+        error.message.includes("FORBIDDEN")
+          ? "이 반을 입력할 권한이 없습니다."
+          : "저장에 실패했습니다."
+      );
+      return;
+    }
+    setDirty(false);
+    setMessage(`${allDates.length}일 전체를 처리했습니다.`);
+    startTransition(() => router.refresh());
+  }
+
   function markAll(status: ParticipationStatus) {
     setMarks((m) => {
       const next = { ...m };
@@ -97,6 +136,7 @@ export default function ParticipationGrid({
     const { error } = await supabase.rpc("save_participations", {
       p_event: eventId,
       p_rows: rows,
+      p_on_date: onDate,
     });
 
     if (error) {
@@ -128,8 +168,16 @@ export default function ParticipationGrid({
           onClick={() => markAll("attended")}
           className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 font-medium text-emerald-800"
         >
-          전체 참여
+          {isDaily ? "이 날 전체 참여" : "전체 참여"}
         </button>
+        {isDaily && allDates.length > 1 && (
+          <button
+            onClick={() => markEveryDate("attended")}
+            className="rounded-lg border border-emerald-300 px-3 py-1.5 font-medium text-emerald-800"
+          >
+            {allDates.length}일 전체 참여
+          </button>
+        )}
         <button
           onClick={() => markAll("pending")}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600"

@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -293,3 +293,51 @@ try {
   await db.query(`select * from event_classroom_status('${myEvent}')`)
   console.log('   ❌ 외부인이 집계를 봄 (버그)')
 } catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }
+
+console.log('\n=== 13. 여러 날 출석 + 내 반 구분 (06) ===')
+await asUser('head')
+// 3일짜리 수련회, 매일 체크
+const { id: camp } = await one(`select create_event('${yearId}', '수련회', '2024-12-18'::date,
+  '2024-12-20'::date, null, 'academic', true, null, null, null, '수련원', true,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, true) as id`)
+const dates = await db.query(`select * from event_dates('${camp}') d`)
+console.log(`   ✅ 매일 체크 일정의 날짜: ${dates.rows.length}일 (${dates.rows.map(r=>String(r.d).slice(4,10)).join(', ')})`)
+
+// 한 번만 체크하는 3일 일정과 비교
+const { id: trip } = await one(`select create_event('${yearId}', '현장체험학습', '2024-12-18'::date,
+  '2024-12-20'::date, null, 'academic', true, null, null, null, '박물관', true,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, false) as id`)
+const d2 = await db.query(`select * from event_dates('${trip}') d`)
+console.log(`   ✅ 한 번만 체크 일정의 날짜: ${d2.rows.length}일 (전체에 한 번)`)
+
+// 하루짜리에 매일 체크를 켜도 무시되어야 함
+const { id: oneday } = await one(`select create_event('${yearId}', '하루행사', '2024-12-23'::date, null,
+  null, 'academic', true, null, null, null, '', true,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, true) as id`)
+const d3 = await one(`select daily_participation from events where id='${oneday}'`)
+console.log(`   ${d3.daily_participation === false ? '✅' : '❌'} 하루짜리는 매일 체크가 자동으로 꺼짐`)
+
+// 3일 전체 한 번에 참석 처리
+await asUser('hr1')
+const n = await one(`select set_classroom_participation('${camp}', '${cls['3-1']}', 'attended', true, null, true) as n`)
+console.log(`   ✅ 3-1반 3일 전체 일괄 처리: ${n.n}건`)
+
+// 둘째 날만 한 명 불참
+const stu = await one(`select id, name from students where classroom_id='${cls['3-1']}' and number=5`)
+await db.exec(`select set_participation('${camp}', '${stu.id}', 'absent', '질병', '2024-12-19'::date)`)
+
+await asAuthed('head')
+const daily = await db.query(`select * from event_daily_summary('${camp}')`)
+console.log('   날짜별 현황:')
+for (const r of daily.rows)
+  console.log(`     ${String(r.on_date).slice(4,10)}  참여 ${r.attended} / 불참 ${r.absent} / 미입력 ${r.pending}`)
+
+// '내 반' 구분 — 부장은 학년 전체가 can_edit 이지만 is_homeroom 은 자기 반만
+const st1 = await db.query(`select classroom_name, can_edit, is_homeroom from event_classroom_status('${camp}', '2024-12-19'::date)`)
+console.log(`   부장이 보는 반: ${st1.rows.map(r=>`${r.classroom_name}[편집${r.can_edit?'O':'X'}/내반${r.is_homeroom?'O':'X'}]`).join(' ')}`)
+const badgeOk = st1.rows.every(r => r.can_edit === true) && st1.rows.every(r => r.is_homeroom === false)
+console.log(`   ${badgeOk ? '✅ 부장: 전 반 편집 가능하지만 "내 반"은 없음' : '❌ 구분 실패'}`)
+
+await asAuthed('hr1')
+const st2 = await db.query(`select classroom_name, can_edit, is_homeroom from event_classroom_status('${camp}', '2024-12-19'::date)`)
+console.log(`   3-1 담임이 보는 반: ${st2.rows.map(r=>`${r.classroom_name}[편집${r.can_edit?'O':'X'}/내반${r.is_homeroom?'O':'X'}]`).join(' ')}`)

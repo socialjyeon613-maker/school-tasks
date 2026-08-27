@@ -12,6 +12,11 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 3. `03_participation.sql` — 학생 참여 + 집계 뷰 + Storage 버킷
 4. `04_event_edit.sql` — 일정 수정 RPC
 5. `05_teacher_access.sql` — 교사 일정 등록 + 반별 집계 공개
+6. `06_daily_participation.sql` — 날짜별 출석 + 담임/편집권 구분
+
+> 06 은 `participations` 의 기본키를 `(event_id, student_id)` 에서
+> `(event_id, student_id, on_date)` 로 넓힙니다. 기존 기록은 일정 시작일로
+> 자동 채워지므로 데이터 손실은 없습니다.
 
 > `create_school()` 은 `periods` / `event_categories` 에 기본값을 넣기 때문에
 > **3개 파일을 모두 실행한 뒤** 호출해야 합니다.

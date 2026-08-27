@@ -86,6 +86,8 @@ export interface SchoolEvent {
   note: string;
   status: EventStatus;
   requires_participation: boolean;
+  /** 여러 날 일정에서 날짜마다 출석을 따로 받을지 */
+  daily_participation: boolean;
   due_at: string | null;
   owner_id: string | null;
   created_by: string | null;
@@ -138,8 +140,20 @@ export interface ClassroomParticipation {
   absent: number;
   pending: number;
   is_complete: boolean;
-  /** 내가 이 반의 입력을 고칠 수 있는가 */
+  /** 내가 이 반의 입력을 고칠 수 있는가 (담임 · 학년부장 · 관리자) */
   can_edit: boolean;
+  /** 내가 담임인 반인가 — '내 반' 표시는 이걸로 (부장은 학년 전체가 can_edit) */
+  is_homeroom: boolean;
+}
+
+/** event_daily_summary() — 매일 체크 일정의 날짜별 진행 */
+export interface DailySummary {
+  on_date: string;
+  total: number;
+  attended: number;
+  absent: number;
+  pending: number;
+  is_complete: boolean;
 }
 
 /** v_participation_summary */

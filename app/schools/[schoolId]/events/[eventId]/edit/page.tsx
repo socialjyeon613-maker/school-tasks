@@ -64,6 +64,7 @@ export default async function EditEventPage({
     startTime: ev.start_time,
     location: ev.location,
     requiresParticipation: ev.requires_participation,
+    dailyParticipation: ev.daily_participation,
     dueAt: ev.due_at,
     classroomIds: (targets ?? []).map((t) => t.classroom_id).filter(Boolean) as string[],
     gradeIds: (targets ?? []).map((t) => t.grade_id).filter(Boolean) as string[],

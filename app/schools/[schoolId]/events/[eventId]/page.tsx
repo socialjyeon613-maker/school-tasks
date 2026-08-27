@@ -7,6 +7,7 @@ import { getSessionUser } from "@/lib/supabase/auth";
 import { categoryStyle } from "@/lib/types";
 import type {
   Absentees,
+  DailySummary,
   ClassroomParticipation,
   ParticipationSummary,
   SchoolEvent,
@@ -15,13 +16,14 @@ import ParticipationGrid from "./participation-grid";
 import Assignments from "./assignments";
 import Attachments from "./attachments";
 import Comments from "./comments";
+import DateTabs from "./date-tabs";
 
 export default async function EventPage({
   params,
   searchParams,
 }: {
   params: Promise<{ schoolId: string; eventId: string }>;
-  searchParams: Promise<{ class?: string }>;
+  searchParams: Promise<{ class?: string; date?: string }>;
 }) {
   const { schoolId, eventId } = await params;
   const sp = await searchParams;
@@ -64,13 +66,27 @@ export default async function EventPage({
   let students: Array<{ student_id: string; classroom_id: string; number: number; name: string }> = [];
   let marks: Record<string, { status: string; reason: string }> = {};
   let classrooms: Array<{ id: string; name: string }> = [];
+  let dailyRows: DailySummary[] = [];
+  let onDate = ev.start_date;
 
   if (ev.requires_participation) {
+    if (ev.daily_participation) {
+      const { data: ds } = await supabase.rpc("event_daily_summary", { p_event: eventId });
+      dailyRows = (ds ?? []) as DailySummary[];
+      const wanted = sp.date && dailyRows.some((d) => d.on_date === sp.date) ? sp.date : null;
+      // 기본은 '아직 입력이 안 끝난 첫 날' — 오늘 할 일이 바로 열립니다.
+      onDate =
+        wanted ??
+        dailyRows.find((d) => !d.is_complete)?.on_date ??
+        dailyRows[0]?.on_date ??
+        ev.start_date;
+    }
+
     const [c, a, st] = await Promise.all([
       // 반별 집계는 '숫자만' 이라 학교 구성원 전체가 봅니다 (05_teacher_access.sql).
-      supabase.rpc("event_classroom_status", { p_event: eventId }),
+      supabase.rpc("event_classroom_status", { p_event: eventId, p_on_date: onDate }),
       // 불참자 '이름'은 그대로 잠겨 있습니다 — 자기 반 · 학년부장 · 교장/교감만.
-      supabase.from("v_absentees").select("*").eq("event_id", eventId).order("classroom_name"),
+      supabase.from("v_absentees").select("*").eq("event_id", eventId).eq("on_date", onDate).order("classroom_name"),
       // 참여 체크 그리드용. RLS 때문에 내가 볼 수 있는 학생만 돌아옵니다.
       supabase.from("v_event_students").select("*").eq("event_id", eventId).order("number"),
     ]);
@@ -108,7 +124,8 @@ export default async function EventPage({
       const { data: parts } = await supabase
         .from("participations")
         .select("student_id, status, reason")
-        .eq("event_id", eventId);
+        .eq("event_id", eventId)
+        .eq("on_date", onDate);
       for (const p of parts ?? [])
         marks[p.student_id] = { status: p.status, reason: p.reason };
     }
@@ -229,6 +246,10 @@ export default async function EventPage({
             모든 반의 인원수를 볼 수 있습니다. 입력과 학생 이름은 담당 반만 열립니다.
           </p>
 
+          {ev.daily_participation && (
+            <DateTabs days={dailyRows} onDate={onDate} classId={selectedClass?.id} />
+          )}
+
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="대상" value={summary.total} />
             <Stat label="참여" value={summary.attended} tone="emerald" />
@@ -263,11 +284,15 @@ export default async function EventPage({
                   <tr key={c.classroom_id}>
                     <td className="border border-slate-200 px-3 py-1.5 font-medium">
                       {c.classroom_name}
-                      {c.can_edit && (
+                      {c.is_homeroom ? (
                         <span className="ml-1 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-medium text-white">
                           내 반
                         </span>
-                      )}
+                      ) : c.can_edit ? (
+                        <span className="ml-1 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          입력가능
+                        </span>
+                      ) : null}
                     </td>
                     <td className="border border-slate-200 px-3 py-1.5 text-right">{c.total}</td>
                     <td className="border border-slate-200 px-3 py-1.5 text-right">{c.attended}</td>
@@ -305,7 +330,7 @@ export default async function EventPage({
                 {classrooms.map((c) => (
                   <Link
                     key={c.id}
-                    href={`?class=${c.id}`}
+                    href={`?class=${c.id}${ev.daily_participation ? `&date=${onDate}` : ""}`}
                     className={`rounded px-2.5 py-1 text-sm ${
                       c.id === selectedClass.id
                         ? "bg-slate-900 text-white"
@@ -319,10 +344,17 @@ export default async function EventPage({
             )}
           </div>
 
+          {ev.daily_participation && (
+            <DateTabs days={dailyRows} onDate={onDate} classId={selectedClass.id} />
+          )}
+
           <ParticipationGrid
             eventId={eventId}
             classroomId={selectedClass.id}
             classroomName={selectedClass.name}
+            onDate={onDate}
+            isDaily={ev.daily_participation}
+            allDates={dailyRows.map((d) => d.on_date)}
             students={students.filter((s) => s.classroom_id === selectedClass.id)}
             initial={marks}
           />

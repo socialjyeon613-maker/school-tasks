@@ -27,6 +27,7 @@ export interface EventInitial {
   startTime: string | null;
   location: string;
   requiresParticipation: boolean;
+  dailyParticipation: boolean;
   dueAt: string | null;
   classroomIds: string[];
   gradeIds: string[];
@@ -80,6 +81,9 @@ export default function EventForm({
   const [requiresParticipation, setRequiresParticipation] = useState(
     initial?.requiresParticipation ?? false
   );
+  const [dailyParticipation, setDailyParticipation] = useState(
+    initial?.dailyParticipation ?? false
+  );
   const [eventType, setEventType] = useState<"academic" | "task">(
     initial?.eventType ?? "academic"
   );
@@ -120,6 +124,8 @@ export default function EventForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const isMultiDay = Boolean(endDate && endDate > startDate);
 
   const gradeClassrooms = useMemo(
     () => classrooms.filter((c) => c.grade_id === gradeId),
@@ -173,6 +179,7 @@ export default function EventForm({
       p_grade_ids: scope === "grade" ? [gradeId] : [],
       p_department_ids: [],
       p_due_at: eventType === "task" && dueAt ? new Date(dueAt).toISOString() : null,
+      p_daily_participation: isMultiDay && requiresParticipation && dailyParticipation,
     };
 
     try {
@@ -468,6 +475,39 @@ export default function EventForm({
           </span>
         </span>
       </label>
+
+      {requiresParticipation && isMultiDay && (
+        <div className="rounded-lg border border-slate-300 bg-white p-4">
+          <p className="mb-2 text-sm font-medium">
+            {startDate.slice(5).replace("-", "/")} ~ {endDate.slice(5).replace("-", "/")} · 여러 날 일정입니다
+          </p>
+          <div className="space-y-2">
+            {(
+              [
+                [false, "한 번만 체크", "일정 전체에 한 번. 현장체험학습처럼 하루 단위로 참여 여부가 정해지는 경우."],
+                [true, "매일 출석 체크", "날짜마다 따로 받습니다. 수련회 · 캠프 · 방과후 강좌처럼 날마다 달라지는 경우."],
+              ] as Array<[boolean, string, string]>
+            ).map(([v, label, hint]) => (
+              <button
+                key={String(v)}
+                type="button"
+                onClick={() => setDailyParticipation(v)}
+                className={`block w-full rounded-lg border px-3 py-2.5 text-left ${
+                  dailyParticipation === v
+                    ? "border-slate-900 bg-slate-50"
+                    : "border-slate-200"
+                }`}
+              >
+                <span className="block text-sm font-medium">
+                  {dailyParticipation === v ? "● " : "○ "}
+                  {label}
+                </span>
+                <span className="block pl-4 text-xs text-slate-500">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isEdit && initial!.participationCount > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
