@@ -13,6 +13,7 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 4. `04_event_edit.sql` — 일정 수정 RPC
 5. `05_teacher_access.sql` — 교사 일정 등록 + 반별 집계 공개
 6. `06_daily_participation.sql` — 날짜별 출석 + 담임/편집권 구분
+7. `07_task_assignees.sql` — 업무 일정에 담당자 지정
 
 > 06 은 `participations` 의 기본키를 `(event_id, student_id)` 에서
 > `(event_id, student_id, on_date)` 로 넓힙니다. 기존 기록은 일정 시작일로

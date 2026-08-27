@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -341,3 +341,37 @@ console.log(`   ${badgeOk ? '✅ 부장: 전 반 편집 가능하지만 "내 반
 await asAuthed('hr1')
 const st2 = await db.query(`select classroom_name, can_edit, is_homeroom from event_classroom_status('${camp}', '2024-12-19'::date)`)
 console.log(`   3-1 담임이 보는 반: ${st2.rows.map(r=>`${r.classroom_name}[편집${r.can_edit?'O':'X'}/내반${r.is_homeroom?'O':'X'}]`).join(' ')}`)
+
+console.log('\n=== 14. 업무 담당자 지정 (07) ===')
+await asUser('head')
+const { id: task2 } = await one(`select create_event('${yearId}', '생활기록부 마감', '2024-12-26'::date, null,
+  null, 'task', false, 3, 4, '11:00'::time, '', true,
+  array['${cls['3-1']}']::uuid[], array['${grade3}']::uuid[], '{}'::uuid[],
+  '2024-12-27 17:00+09'::timestamptz, true,
+  array['${U.hr1}','${U.hr2}']::uuid[]) as id`)
+
+const ev2 = await one(`select event_type, all_day, period_from, requires_participation, daily_participation from events where id='${task2}'`)
+console.log(`   업무 등록 시 무시되는 값 — 교시:${ev2.period_from ?? '없음'} / 종일:${ev2.all_day} / 참여체크:${ev2.requires_participation} / 매일:${ev2.daily_participation}`)
+const tg = await one(`select count(*)::int n from event_targets where event_id='${task2}'`)
+console.log(`   ${tg.n === 0 ? '✅' : '❌'} 업무는 대상(학년/반)을 만들지 않음 (${tg.n}건)`)
+const asg = await db.query(`select p.name from event_assignments a join profiles p on p.id=a.user_id where a.event_id='${task2}' order by p.name`)
+console.log(`   ✅ 담당자 ${asg.rows.length}명 지정: ${asg.rows.map(r=>r.name).join(', ')}`)
+
+// 담당자 한 명이 완료 처리
+await asAuthed('hr1')
+await db.query(`update event_assignments set status='done', submitted_at=now() where event_id=$1 and user_id=$2`, [task2, U.hr1])
+
+// 부장이 제목만 고쳐도 완료 상태가 남아야 함
+await asUser('head')
+await db.exec(`select update_event('${task2}', '생활기록부 마감(연장)', '2024-12-26'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  '2024-12-30 17:00+09'::timestamptz, false, array['${U.hr1}','${U.hr2}']::uuid[])`)
+const keptRow = await one(`select status from event_assignments where event_id='${task2}' and user_id='${U.hr1}'`)
+console.log(`   ${keptRow.status === 'done' ? '✅ 수정해도 담당자 완료 상태 보존' : '❌ 상태가 초기화됨: '+keptRow.status}`)
+
+// 담당자를 한 명으로 줄이면 빠진 사람만 사라져야 함
+await db.exec(`select update_event('${task2}', '생활기록부 마감(연장)', '2024-12-26'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, array['${U.hr1}']::uuid[])`)
+const remain = await db.query(`select user_id, status from event_assignments where event_id='${task2}'`)
+console.log(`   ${remain.rows.length === 1 && remain.rows[0].status === 'done' ? '✅ 빠진 담당자만 제거, 남은 사람 상태 유지' : '❌ 예상과 다름'}`)

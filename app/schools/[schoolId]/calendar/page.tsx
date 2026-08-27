@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
-import { compactClassLabel, firstOf, monthDates, weekday } from "@/lib/format";
+import { compactClassLabel, firstOf, monthDates, teacherColor, weekday } from "@/lib/format";
 import { buildTargetIndex, matchesGrade, packRows, rowCells } from "@/lib/calendar";
 import { categoryStyle, type EventOnDate } from "@/lib/types";
 import MonthNav from "./month-nav";
@@ -63,6 +63,25 @@ export default async function CalendarPage({
         .in("event_id", eventIds)
     : { data: [] };
 
+  // 업무 일정의 담당자 — 달력에서 선생님별 색으로 구분합니다.
+  const { data: assignRows } = eventIds.length
+    ? await supabase
+        .from("event_assignments")
+        .select("event_id, user_id, status, profile:profiles(name)")
+        .in("event_id", eventIds)
+    : { data: [] };
+
+  const assignees = new Map<string, Array<{ id: string; name: string; done: boolean }>>();
+  for (const a of assignRows ?? []) {
+    const list = assignees.get(a.event_id) ?? [];
+    list.push({
+      id: a.user_id,
+      name: firstOf(a.profile)?.name ?? "—",
+      done: a.status === "done",
+    });
+    assignees.set(a.event_id, list);
+  }
+
   const targets = buildTargetIndex(
     (targetRows ?? []).map((t) => ({
       event_id: t.event_id,
@@ -86,6 +105,12 @@ export default async function CalendarPage({
   }
 
   const gradeName = grades?.find((g) => g.id === gradeId)?.name ?? "";
+
+  // 이 달 업무 일정의 담당자 범례 (색이 누구 것인지)
+  const visibleIds = new Set(visible.map((e) => e.event_id));
+  const legend = new Map<string, string>();
+  for (const [eventId, list] of assignees)
+    if (visibleIds.has(eventId)) for (const a of list) legend.set(a.id, a.name);
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-6">
@@ -143,8 +168,11 @@ export default async function CalendarPage({
           <tbody>
             {dates.map((date) => {
               const all = byDate.get(date) ?? [];
-              const grid = all.filter((e) => e.category_lane !== "side");
-              const side = all.filter((e) => e.category_lane === "side");
+              // 업무는 교시를 쓰지 않으므로 그리드 대신 오른쪽 열에 모읍니다.
+              const isSide = (e: EventOnDate) =>
+                e.event_type === "task" || e.category_lane === "side";
+              const grid = all.filter((e) => !isSide(e));
+              const side = all.filter(isSide);
               const rows = packRows(grid, maxPeriod);
               const rowCount = Math.max(rows.length, 1);
               const wd = weekday(date);
@@ -182,6 +210,7 @@ export default async function CalendarPage({
                           schoolId={schoolId}
                           event={cell.placed.event}
                           classNos={targets.get(cell.placed.event.event_id)?.classNos ?? []}
+                          assignees={assignees.get(cell.placed.event.event_id) ?? []}
                         />
                       </td>
                     ) : (
@@ -204,6 +233,7 @@ export default async function CalendarPage({
                           schoolId={schoolId}
                           event={e}
                           classNos={targets.get(e.event_id)?.classNos ?? []}
+                          assignees={assignees.get(e.event_id) ?? []}
                         />
                       ))}
                     </td>
@@ -215,6 +245,18 @@ export default async function CalendarPage({
         </table>
       </div>
 
+      {legend.size > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span className="text-slate-500">업무 담당:</span>
+          {[...legend].map(([id, name]) => (
+            <span key={id} className="flex items-center gap-1">
+              <span className={`h-2.5 w-2.5 rounded-full ${teacherColor(id).dot}`} />
+              {name}
+            </span>
+          ))}
+        </div>
+      )}
+
       <p className="no-print mt-3 text-xs text-slate-500">
         일정을 누르면 상세 · 댓글 · 첨부 · 학생 참여 현황으로 이동합니다.
         브라우저 인쇄(Ctrl+P)로 표만 출력됩니다.
@@ -223,27 +265,52 @@ export default async function CalendarPage({
   );
 }
 
+interface Assignee {
+  id: string;
+  name: string;
+  done: boolean;
+}
+
 function EventChip({
   schoolId,
   event,
   classNos,
+  assignees,
 }: {
   schoolId: string;
   event: EventOnDate;
   classNos: number[];
+  assignees: Assignee[];
 }) {
   const label = classNos.length ? compactClassLabel(classNos) : "";
+  const isTask = event.event_type === "task";
+
+  // 업무는 담당자 색으로, 학사일정은 분류 색으로 구분합니다.
+  // 담당자가 여럿이면 첫 사람 색을 테두리로 쓰고 이름은 모두 적습니다.
+  const color = teacherColor(assignees[0]?.id);
+  const doneCount = assignees.filter((a) => a.done).length;
 
   return (
     <Link
       href={`/schools/${schoolId}/events/${event.event_id}`}
-      className={`block rounded border px-1 py-0.5 leading-tight ${categoryStyle(
-        event.category_color
-      )}`}
+      className={
+        isTask
+          ? `block border-l-4 ${color.border} ${color.chip} rounded-r px-1 py-0.5 text-left leading-tight`
+          : `block rounded border px-1 py-0.5 leading-tight ${categoryStyle(event.category_color)}`
+      }
     >
       <span className="font-medium">{event.title}</span>
-      {label && <span className="opacity-70"> ({label})</span>}
-      {event.location && (
+      {!isTask && label && <span className="opacity-70"> ({label})</span>}
+
+      {isTask && assignees.length > 0 && (
+        <span className="block text-[11px] opacity-80">
+          {assignees.map((a) => a.name).join(", ")}
+          {assignees.length > 1 && ` · ${doneCount}/${assignees.length}`}
+          {assignees.length === 1 && doneCount === 1 && " ✓"}
+        </span>
+      )}
+
+      {!isTask && event.location && (
         <span className="block text-[11px] opacity-70">
           {event.location}
           {event.start_time ? ` / ${event.start_time.slice(0, 5)}` : ""}

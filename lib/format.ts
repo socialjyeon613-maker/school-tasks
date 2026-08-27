@@ -118,3 +118,41 @@ export function formatDateTime(iso: string | null | undefined) {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+
+/* ------------------------------------------------------------------
+   선생님별 색상
+
+   달력에서 업무 일정이 누구 것인지 한눈에 보이도록 담당자마다 색을 줍니다.
+   DB에 색을 저장하지 않고 id 로부터 계산합니다 — 설정 화면이 필요 없고,
+   교직원이 바뀌어도 각자의 색은 그대로 유지됩니다.
+   Tailwind 는 동적 클래스를 빌드에서 지우므로 반드시 정적 문자열이어야 합니다.
+------------------------------------------------------------------ */
+
+const TEACHER_COLORS = [
+  { dot: "bg-rose-500", border: "border-l-rose-500", chip: "bg-rose-50 text-rose-900" },
+  { dot: "bg-sky-500", border: "border-l-sky-500", chip: "bg-sky-50 text-sky-900" },
+  { dot: "bg-emerald-500", border: "border-l-emerald-500", chip: "bg-emerald-50 text-emerald-900" },
+  { dot: "bg-amber-500", border: "border-l-amber-500", chip: "bg-amber-50 text-amber-900" },
+  { dot: "bg-violet-500", border: "border-l-violet-500", chip: "bg-violet-50 text-violet-900" },
+  { dot: "bg-teal-500", border: "border-l-teal-500", chip: "bg-teal-50 text-teal-900" },
+  { dot: "bg-orange-500", border: "border-l-orange-500", chip: "bg-orange-50 text-orange-900" },
+  { dot: "bg-fuchsia-500", border: "border-l-fuchsia-500", chip: "bg-fuchsia-50 text-fuchsia-900" },
+  { dot: "bg-lime-600", border: "border-l-lime-600", chip: "bg-lime-50 text-lime-900" },
+  { dot: "bg-cyan-500", border: "border-l-cyan-500", chip: "bg-cyan-50 text-cyan-900" },
+  { dot: "bg-indigo-500", border: "border-l-indigo-500", chip: "bg-indigo-50 text-indigo-900" },
+  { dot: "bg-pink-500", border: "border-l-pink-500", chip: "bg-pink-50 text-pink-900" },
+];
+
+const NO_TEACHER = {
+  dot: "bg-slate-400",
+  border: "border-l-slate-400",
+  chip: "bg-slate-50 text-slate-700",
+};
+
+/** uuid → 팔레트 index (같은 사람은 언제나 같은 색) */
+export function teacherColor(userId: string | null | undefined) {
+  if (!userId) return NO_TEACHER;
+  let h = 0;
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) | 0;
+  return TEACHER_COLORS[Math.abs(h) % TEACHER_COLORS.length];
+}

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolContext } from "@/lib/school";
+import { getSchoolContext, listMembers } from "@/lib/school";
 import EventForm from "../event-form";
 
 export default async function NewEventPage({
@@ -24,6 +24,8 @@ export default async function NewEventPage({
       supabase.from("periods").select("id, no, name").eq("academic_year_id", ctx.year.id).order("no"),
     ]);
 
+  const members = await listMembers(schoolId, ctx.year.id);
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-6">
       <h1 className="mb-4 text-lg font-bold">일정 등록</h1>
@@ -37,6 +39,7 @@ export default async function NewEventPage({
         classrooms={classrooms ?? []}
         categories={categories ?? []}
         periods={periods ?? []}
+        members={members}
       />
     </main>
   );

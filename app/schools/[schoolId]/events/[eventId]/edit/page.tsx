@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getSchoolContext } from "@/lib/school";
+import { getSchoolContext, listMembers } from "@/lib/school";
 import EventForm, { type EventInitial } from "../../event-form";
 import type { SchoolEvent } from "@/lib/types";
 
@@ -51,6 +51,11 @@ export default async function EditEventPage({
     supabase.from("event_attachments").select("file_path").eq("event_id", eventId).eq("kind", "file"),
   ]);
 
+  const [members, { data: assignees }] = await Promise.all([
+    listMembers(schoolId, ctx.year.id),
+    supabase.from("event_assignments").select("user_id").eq("event_id", eventId),
+  ]);
+
   const initial: EventInitial = {
     id: ev.id,
     title: ev.title,
@@ -69,6 +74,7 @@ export default async function EditEventPage({
     classroomIds: (targets ?? []).map((t) => t.classroom_id).filter(Boolean) as string[],
     gradeIds: (targets ?? []).map((t) => t.grade_id).filter(Boolean) as string[],
     participationCount: participationCount ?? 0,
+    assigneeIds: (assignees ?? []).map((a) => a.user_id),
     attachmentPaths: (attachments ?? [])
       .map((a) => a.file_path)
       .filter(Boolean) as string[],
@@ -93,6 +99,7 @@ export default async function EditEventPage({
         classrooms={classrooms ?? []}
         categories={categories ?? []}
         periods={periods ?? []}
+        members={members}
         initial={initial}
       />
     </main>

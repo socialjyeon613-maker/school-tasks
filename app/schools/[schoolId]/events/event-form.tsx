@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { compactClassLabel } from "@/lib/format";
+import { compactClassLabel, teacherColor } from "@/lib/format";
 import { categoryStyle } from "@/lib/types";
 
 interface Grade { id: string; grade_no: number; name: string }
 interface Classroom { id: string; grade_id: string; class_no: number; name: string }
 interface Category { id: string; name: string; color: string; lane: string }
 interface Period { id: string; no: number; name: string }
+export interface Member { user_id: string; name: string; email: string; duty: string }
 
 type Scope = "school" | "grade" | "classroom";
 
@@ -34,6 +35,7 @@ export interface EventInitial {
   /** 이미 입력된 참여 기록 수 — 대상을 바꾸면 어긋나므로 경고에 씁니다 */
   participationCount: number;
   attachmentPaths: string[];
+  assigneeIds: string[];
 }
 
 export default function EventForm({
@@ -46,6 +48,7 @@ export default function EventForm({
   classrooms,
   categories,
   periods,
+  members,
   initial,
 }: {
   schoolId: string;
@@ -58,6 +61,8 @@ export default function EventForm({
   classrooms: Classroom[];
   categories: Category[];
   periods: Period[];
+  /** 업무 담당자로 지정할 수 있는 교직원 */
+  members: Member[];
   /** 없으면 등록 모드, 있으면 편집 모드 */
   initial?: EventInitial;
 }) {
@@ -88,6 +93,9 @@ export default function EventForm({
     initial?.eventType ?? "academic"
   );
   // datetime-local 은 'YYYY-MM-DDTHH:mm' 형식만 받습니다.
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    initial?.assigneeIds ?? []
+  );
   const [dueAt, setDueAt] = useState(
     initial?.dueAt ? toLocalInput(initial.dueAt) : ""
   );
@@ -125,6 +133,7 @@ export default function EventForm({
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  const isTask = eventType === "task";
   const isMultiDay = Boolean(endDate && endDate > startDate);
 
   const gradeClassrooms = useMemo(
@@ -155,7 +164,7 @@ export default function EventForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (scope === "classroom" && classIds.length === 0) {
+    if (!isTask && scope === "classroom" && classIds.length === 0) {
       setError("대상 반을 하나 이상 선택하세요.");
       return;
     }
@@ -175,11 +184,12 @@ export default function EventForm({
       p_start_time: startTime || null,
       p_location: location,
       p_requires_participation: requiresParticipation,
-      p_classroom_ids: scope === "classroom" ? classIds : [],
-      p_grade_ids: scope === "grade" ? [gradeId] : [],
+      p_classroom_ids: !isTask && scope === "classroom" ? classIds : [],
+      p_grade_ids: !isTask && scope === "grade" ? [gradeId] : [],
       p_department_ids: [],
       p_due_at: eventType === "task" && dueAt ? new Date(dueAt).toISOString() : null,
       p_daily_participation: isMultiDay && requiresParticipation && dailyParticipation,
+      p_assignee_ids: isTask ? assigneeIds : [],
     };
 
     try {
@@ -308,6 +318,7 @@ export default function EventForm({
         </Field>
       </div>
 
+      {!isTask && (
       <Field label="교시">
         <label className="mb-2 flex items-center gap-2 text-sm">
           <input
@@ -350,8 +361,10 @@ export default function EventForm({
           </div>
         )}
       </Field>
+      )}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`grid gap-4 ${isTask ? "" : "sm:grid-cols-2"}`}>
+        {!isTask && (
         <Field label="집합 시각 (선택)">
           <input
             type="time"
@@ -360,16 +373,18 @@ export default function EventForm({
             className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
           />
         </Field>
-        <Field label="장소">
+        )}
+        <Field label={isTask ? "비고 (선택)" : "장소"}>
           <input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
-            placeholder="홍대 전용관"
+            placeholder={isTask ? "제출처 · 참고사항" : "홍대 전용관"}
           />
         </Field>
       </div>
 
+      {!isTask && (
       <Field label={`대상 — ${selectedLabel}`}>
         <div className="mb-2 flex gap-1">
           {(
@@ -445,6 +460,56 @@ export default function EventForm({
           </>
         )}
       </Field>
+      )}
+
+      {isTask && (
+        <Field
+          label={`담당자 ${assigneeIds.length > 0 ? `— ${assigneeIds.length}명` : ""}`}
+        >
+          {members.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              아직 다른 교직원이 없습니다. 관리 화면에서 초대하세요.
+            </p>
+          ) : (
+            <>
+              <p className="mb-2 text-xs text-slate-500">
+                지정한 사람마다 완료 여부가 따로 관리되고, 각자의 「내 할 일」에 나타납니다.
+              </p>
+              <ul className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto sm:grid-cols-3">
+                {members.map((m) => {
+                  const on = assigneeIds.includes(m.user_id);
+                  const color = teacherColor(m.user_id);
+                  return (
+                    <li key={m.user_id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssigneeIds((v) =>
+                            v.includes(m.user_id)
+                              ? v.filter((x) => x !== m.user_id)
+                              : [...v, m.user_id]
+                          )
+                        }
+                        className={`flex w-full items-center gap-2 rounded border px-2 py-1.5 text-left text-sm ${
+                          on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300"
+                        }`}
+                      >
+                        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${color.dot}`} />
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-medium">{m.name}</span>
+                          {m.duty && (
+                            <span className="ml-1 text-xs opacity-60">{m.duty}</span>
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </Field>
+      )}
 
       {eventType === "task" && (
         <Field label="마감">
@@ -460,6 +525,7 @@ export default function EventForm({
         </Field>
       )}
 
+      {!isTask && (
       <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm">
         <input
           type="checkbox"
@@ -475,6 +541,7 @@ export default function EventForm({
           </span>
         </span>
       </label>
+      )}
 
       {requiresParticipation && isMultiDay && (
         <div className="rounded-lg border border-slate-300 bg-white p-4">

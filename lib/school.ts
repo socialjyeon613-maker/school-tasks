@@ -174,3 +174,50 @@ export async function getSchoolContext(
     isAdmin,
   };
 }
+
+/**
+ * 업무 담당자로 지정할 수 있는 교직원 목록 (현재 학년도 활성 구성원).
+ * 이름 옆에 보직을 붙여 동명이인을 구분합니다.
+ */
+export async function listMembers(schoolId: string, yearId: string) {
+  const supabase = await createClient();
+
+  const [{ data: members }, { data: roles }] = await Promise.all([
+    supabase
+      .from("school_members")
+      .select("user_id, profile:profiles(name, email)")
+      .eq("academic_year_id", yearId)
+      .eq("status", "active"),
+    supabase
+      .from("staff_roles")
+      .select(
+        "user_id, role, grade:grades(name), classroom:classrooms(name), department:departments(name)"
+      )
+      .eq("academic_year_id", yearId),
+  ]);
+
+  const dutyBy = new Map<string, string[]>();
+  for (const r of roles ?? []) {
+    const scope =
+      firstOf(r.classroom)?.name ??
+      firstOf(r.grade)?.name ??
+      firstOf(r.department)?.name ??
+      "";
+    const kind = r.role as StaffRoleKind;
+    const list = dutyBy.get(r.user_id) ?? [];
+    list.push(`${scope} ${STAFF_ROLE_LABEL[kind] ?? kind}`.trim());
+    dutyBy.set(r.user_id, list);
+  }
+
+  return (members ?? [])
+    .map((m) => {
+      const p = firstOf(m.profile);
+      return {
+        user_id: m.user_id,
+        name: p?.name ?? "—",
+        email: p?.email ?? "",
+        duty: (dutyBy.get(m.user_id) ?? []).join(" · "),
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+}
