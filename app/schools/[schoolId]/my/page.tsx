@@ -52,10 +52,13 @@ export default async function MyPage({
       .select("event_id, grade_id, classroom_id, department_id, user_id")
       .in("event_id", ids);
 
+    // user_id 조건이 빠지면 전 교직원의 보직을 긁어와
+    // 학교의 모든 일정이 '내 할 일'로 나옵니다. RLS 는 좁혀주지 않습니다.
     const { data: roles } = await supabase
       .from("staff_roles")
       .select("grade_id, classroom_id, department_id")
-      .eq("academic_year_id", ctx.year.id);
+      .eq("academic_year_id", ctx.year.id)
+      .eq("user_id", ctx.userId);
 
     const myGrades = new Set((roles ?? []).map((r) => r.grade_id).filter(Boolean));
     const myClasses = new Set((roles ?? []).map((r) => r.classroom_id).filter(Boolean));

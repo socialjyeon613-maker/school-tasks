@@ -19,26 +19,32 @@ function SignupForm() {
     setBusy(true);
     setError("");
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name: name.trim() } },
-    });
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name: name.trim() } },
+      });
 
-    if (error) {
-      setError(
-        error.message.includes("already")
-          ? "이미 가입된 이메일입니다."
-          : "가입에 실패했습니다. 잠시 후 다시 시도해 주세요."
-      );
+      if (error) {
+        setError(
+          error.message.includes("already")
+            ? "이미 가입된 이메일입니다."
+            : `가입에 실패했습니다. (${error.message})`
+        );
+        return;
+      }
+
+      const next = params.get("next");
+      router.push(next?.startsWith("/") ? next : "/schools");
+      router.refresh();
+    } catch (e) {
+      // 환경변수 누락 · 네트워크 장애 등. 잡지 않으면 버튼이 아무 반응 없이 죽습니다.
+      setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const next = params.get("next");
-    router.push(next?.startsWith("/") ? next : "/schools");
-    router.refresh();
   }
 
   return (

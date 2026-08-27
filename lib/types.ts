@@ -179,6 +179,15 @@ export interface SchoolContext {
   isAdmin: boolean;
 }
 
+/** 보직 — 한 사람이 여러 개를 동시에 가집니다 (예: 3학년 부장 + 3-2 담임) */
+export const STAFF_ROLE_LABEL: Record<StaffRoleKind, string> = {
+  head: "부장",
+  homeroom: "담임",
+  co_homeroom: "부담임",
+  member: "부원",
+  subject: "교과",
+};
+
 export const ROLE_LABEL: Record<MemberRole, string> = {
   principal: "교장",
   vice_principal: "교감",

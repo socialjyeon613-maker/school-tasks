@@ -35,11 +35,15 @@ export default async function SchoolsPage() {
                 href={`/schools/${r.school.id}`}
                 className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 transition hover:border-slate-400"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="font-semibold">{r.school.name}</p>
-                  <p className="text-sm text-slate-500">{r.year.name}</p>
+                  <p className="text-sm text-slate-500">
+                    {r.year.name}
+                    {/* 한 사람이 부장이면서 담임일 수 있습니다 */}
+                    {r.duties.length > 0 && ` · ${r.duties.join(" · ")}`}
+                  </p>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
                   {ROLE_LABEL[r.role]}
                 </span>
               </Link>

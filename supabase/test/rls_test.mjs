@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -207,3 +207,40 @@ console.log(`   ${other.status === 'pending' ? '✅ 남의 상태 변경 차단�
 await asAuthed('head')
 const prog = await one(`select * from v_assignment_progress where event_id='${task}'`)
 console.log(`   현황판: ${prog.assigned}명 중 ${prog.done}명 완료, ${prog.remaining}명 미완료`)
+
+console.log('\n=== 11. 일정 편집 · 삭제 ===')
+// 부장이 만든 '난타 공연'(3학년 대상)을 3-1반 대상으로 좁힌다
+await asUser('head')
+await db.exec(`select update_event('${ev}', '난타 공연(수정)', '2024-12-11'::date, null,
+  null, 'academic', false, 5, 6, '13:00'::time, '홍대 전용관 2관', true,
+  array['${cls['3-1']}']::uuid[], '{}'::uuid[], '{}'::uuid[], null)`)
+const upd = await one(`select title, start_date, period_from, period_to, location from events where id='${ev}'`)
+const tgt = await one(`select count(*)::int n from event_targets where event_id='${ev}' and classroom_id is not null`)
+console.log(`   ✅ 수정됨: ${upd.title} / ${upd.period_from}~${upd.period_to}교시 / ${upd.location}`)
+console.log(`   ✅ 대상 교체: 학년 → 반 ${tgt.n}개 (전교로 뒤바뀌지 않음)`)
+
+// 참여 기록은 남아 있고, 집계는 새 대상 기준으로만
+const kept = await one(`select count(*)::int n from participations where event_id='${ev}'`)
+const summ = await one(`select total, attended from v_participation_summary where event_id='${ev}'`)
+console.log(`   참여 기록 ${kept.n}건 보존 / 집계 대상은 ${summ.total}명 (3-1반만)`)
+
+// 권한 없는 담임이 수정하면?
+await asUser('hr2')
+try {
+  await db.exec(`select update_event('${ev}', '몰래수정', '2024-12-11'::date)`)
+  console.log('   ❌ 무관한 담임이 수정함 (버그)')
+} catch (e) { console.log(`   ✅ 무관한 담임의 수정 차단됨: ${e.message}`) }
+
+// 삭제 — 담임은 불가, 부장은 가능
+await asAuthed('hr2')
+await db.query(`delete from events where id = $1`, [ev])
+await asUser('admin')
+let alive = await one(`select count(*)::int n from events where id='${ev}'`)
+console.log(`   ${alive.n === 1 ? '✅ 담임의 삭제 차단됨' : '❌ 삭제돼버림 (버그)'}`)
+
+await asAuthed('head')
+await db.query(`delete from events where id = $1`, [ev])
+await asUser('admin')
+alive = await one(`select count(*)::int n from events where id='${ev}'`)
+const orphan = await one(`select count(*)::int n from participations where event_id='${ev}'`)
+console.log(`   ${alive.n === 0 ? '✅ 부장은 삭제 가능' : '❌ 부장이 삭제 못함'} / 참여기록 cascade 정리: ${orphan.n}건 남음`)

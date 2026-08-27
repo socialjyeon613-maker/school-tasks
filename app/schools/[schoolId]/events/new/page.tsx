@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
-import EventForm from "./event-form";
+import EventForm from "../event-form";
 
 export default async function NewEventPage({
   params,

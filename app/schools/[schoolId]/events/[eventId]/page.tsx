@@ -164,7 +164,19 @@ export default async function EventPage({
           )}
         </div>
 
-        <h1 className="mt-2 text-xl font-bold">{ev.title}</h1>
+        <div className="mt-2 flex flex-wrap items-start gap-3">
+          <h1 className="text-xl font-bold">{ev.title}</h1>
+          {(ctx.canCreateEvent ||
+            ev.created_by === ctx.userId ||
+            ev.owner_id === ctx.userId) && (
+            <Link
+              href={`/schools/${schoolId}/events/${eventId}/edit`}
+              className="no-print ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+            >
+              편집
+            </Link>
+          )}
+        </div>
 
         <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
           <Row label="일자">

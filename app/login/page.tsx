@@ -19,18 +19,27 @@ function LoginForm() {
     setBusy(true);
     setError("");
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setError("이메일 또는 비밀번호가 올바르지 않습니다.");
+      if (error) {
+        setError(
+          error.message.includes("Email not confirmed")
+            ? "메일 인증이 완료되지 않은 계정입니다."
+            : "이메일 또는 비밀번호가 올바르지 않습니다."
+        );
+        return;
+      }
+
+      const next = params.get("next");
+      router.push(next?.startsWith("/") ? next : "/schools");
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const next = params.get("next");
-    router.push(next?.startsWith("/") ? next : "/schools");
-    router.refresh();
   }
 
   return (
