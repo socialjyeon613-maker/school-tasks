@@ -4,13 +4,23 @@ import { getVerifiedClaims } from "@/lib/supabase/auth";
 
 // Next 16 부터 middleware.ts → proxy.ts, middleware() → proxy() 로 바뀌었습니다.
 
-const PUBLIC_PATHS = ["/login", "/signup"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  // PWA — 브라우저가 로그인 없이 가져갑니다.
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/offline.html",
+];
 
 function isPublic(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith("/auth") ||
-    pathname.startsWith("/invite/")
+    pathname.startsWith("/invite/") ||
+    // 캘린더 구독 — 폰 캘린더 앱은 로그인을 할 수 없습니다.
+    // 대신 주소에 든 비밀 토큰이 열쇠이고, calendar_feed() 가 범위를 정합니다.
+    pathname.startsWith("/ical/")
   );
 }
 

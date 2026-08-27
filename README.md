@@ -9,6 +9,9 @@
 
 기술 스택: Next.js 16 (App Router) · Supabase (Postgres / Auth / RLS) · Tailwind CSS v4
 
+폰 홈화면에 추가하면 앱처럼 씁니다 (PWA). 카카오톡 등에 링크를 붙이면
+[OG 이미지](app/opengraph-image.png)가 함께 보입니다.
+
 ## 핵심 흐름
 
 ```
@@ -63,6 +66,9 @@ npm install
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 ```
+
+> 배포 후 OG 이미지가 카카오톡 등에서 안 보이면 `NEXT_PUBLIC_SITE_URL` 에
+> 배포 주소를 넣으세요. Vercel 은 보통 자동으로 잡힙니다.
 
 ```bash
 npm run dev
