@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
-import { compactClassLabel, firstOf, monthDates, teacherColor, weekday } from "@/lib/format";
+import { compactClassLabel, firstOf, monthDates, teacherColor, toISODate, weekday } from "@/lib/format";
 import { buildTargetIndex, matchesGrade, packRows, rowCells } from "@/lib/calendar";
 import { categoryStyle, type EventOnDate } from "@/lib/types";
 import MonthNav from "./month-nav";
+import NoticeList, { type NoticeItem } from "./notice-list";
 
 export default async function CalendarPage({
   params,
@@ -53,7 +54,29 @@ export default async function CalendarPage({
     .lte("on_date", last)
     .neq("status", "canceled");
 
-  const events = (rawEvents ?? []) as EventOnDate[];
+  // 공지는 달력 격자에 넣지 않고 왼쪽 목록으로 뺍니다.
+  const { data: noticeRows } = await supabase
+    .from("events")
+    .select("id, title, description, start_date, end_date, author:profiles!events_created_by_fkey(name)")
+    .eq("academic_year_id", ctx.year.id)
+    .eq("event_type", "notice")
+    .neq("status", "canceled")
+    .lte("start_date", last)
+    .gte("end_date", first)
+    .order("start_date", { ascending: false });
+
+  const notices: NoticeItem[] = (noticeRows ?? []).map((n) => ({
+    id: n.id,
+    title: n.title,
+    description: n.description,
+    start_date: n.start_date,
+    end_date: n.end_date,
+    author: firstOf(n.author)?.name ?? "",
+  }));
+
+  const events = ((rawEvents ?? []) as EventOnDate[]).filter(
+    (e) => e.event_type !== "notice"
+  );
   const eventIds = [...new Set(events.map((e) => e.event_id))];
 
   const { data: targetRows } = eventIds.length
@@ -149,6 +172,15 @@ export default async function CalendarPage({
         </div>
       </div>
 
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <NoticeList
+          schoolId={schoolId}
+          notices={notices}
+          today={toISODate(new Date())}
+          canPost={ctx.isHead || ctx.isAdmin}
+        />
+
+        <div className="min-w-0 flex-1">
       <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white">
         <table className="w-full border-collapse text-center text-[13px] print-tight">
           <thead>
@@ -243,6 +275,8 @@ export default async function CalendarPage({
             })}
           </tbody>
         </table>
+      </div>
+        </div>
       </div>
 
       {legend.size > 0 && (

@@ -200,6 +200,11 @@ export default async function EventPage({
               업무
             </span>
           )}
+          {ev.event_type === "notice" && (
+            <span className="rounded bg-amber-500 px-2 py-0.5 text-xs font-medium text-white">
+              공지
+            </span>
+          )}
         </div>
 
         <div className="mt-2 flex flex-wrap items-start gap-3">
@@ -217,18 +222,25 @@ export default async function EventPage({
         </div>
 
         <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
-          <Row label="일자">
+          <Row label={ev.event_type === "notice" ? "게시" : "일자"}>
             {formatDate(ev.start_date)}
             {ev.end_date !== ev.start_date && ` ~ ${formatDate(ev.end_date)}`}
           </Row>
-          <Row label="교시">
-            {periodLabel(ev.all_day, ev.period_from, ev.period_to)}
-            {ev.start_time && ` · ${ev.start_time.slice(0, 5)}`}
-          </Row>
-          <Row label="장소">{ev.location || "—"}</Row>
-          <Row label="대상">
-            {targetNames.length ? targetNames.join(", ") : "전교"}
-          </Row>
+          {ev.event_type === "academic" && (
+            <>
+              <Row label="교시">
+                {periodLabel(ev.all_day, ev.period_from, ev.period_to)}
+                {ev.start_time && ` · ${ev.start_time.slice(0, 5)}`}
+              </Row>
+              <Row label="장소">{ev.location || "—"}</Row>
+              <Row label="대상">
+                {targetNames.length ? targetNames.join(", ") : "전교"}
+              </Row>
+            </>
+          )}
+          {ev.event_type === "task" && ev.location && (
+            <Row label="비고">{ev.location}</Row>
+          )}
         </dl>
 
         {ev.description && (

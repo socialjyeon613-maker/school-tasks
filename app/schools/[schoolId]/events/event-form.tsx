@@ -13,13 +13,14 @@ interface Period { id: string; no: number; name: string }
 export interface Member { user_id: string; name: string; email: string; duty: string }
 
 type Scope = "school" | "grade" | "classroom";
+type Kind = "academic" | "task" | "notice";
 
 /** 편집 모드에서 넘겨주는 기존 값 */
 export interface EventInitial {
   id: string;
   title: string;
   categoryId: string | null;
-  eventType: "academic" | "task";
+  eventType: Kind;
   startDate: string;
   endDate: string;
   allDay: boolean;
@@ -29,6 +30,7 @@ export interface EventInitial {
   location: string;
   requiresParticipation: boolean;
   dailyParticipation: boolean;
+  description: string;
   dueAt: string | null;
   classroomIds: string[];
   gradeIds: string[];
@@ -49,6 +51,8 @@ export default function EventForm({
   categories,
   periods,
   members,
+  canPostNotice,
+  defaultKind = "academic",
   initial,
 }: {
   schoolId: string;
@@ -63,6 +67,9 @@ export default function EventForm({
   periods: Period[];
   /** 업무 담당자로 지정할 수 있는 교직원 */
   members: Member[];
+  /** 공지 등록 권한 (부장 · 관리자) */
+  canPostNotice: boolean;
+  defaultKind?: Kind;
   /** 없으면 등록 모드, 있으면 편집 모드 */
   initial?: EventInitial;
 }) {
@@ -89,9 +96,8 @@ export default function EventForm({
   const [dailyParticipation, setDailyParticipation] = useState(
     initial?.dailyParticipation ?? false
   );
-  const [eventType, setEventType] = useState<"academic" | "task">(
-    initial?.eventType ?? "academic"
-  );
+  const [eventType, setEventType] = useState<Kind>(initial?.eventType ?? defaultKind);
+  const [description, setDescription] = useState(initial?.description ?? "");
   // datetime-local 은 'YYYY-MM-DDTHH:mm' 형식만 받습니다.
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     initial?.assigneeIds ?? []
@@ -134,6 +140,8 @@ export default function EventForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isTask = eventType === "task";
+  const isNotice = eventType === "notice";
+  const isPlain = eventType === "academic";
   const isMultiDay = Boolean(endDate && endDate > startDate);
 
   const gradeClassrooms = useMemo(
@@ -164,7 +172,7 @@ export default function EventForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!isTask && scope === "classroom" && classIds.length === 0) {
+    if (isPlain && scope === "classroom" && classIds.length === 0) {
       setError("대상 반을 하나 이상 선택하세요.");
       return;
     }
@@ -184,12 +192,13 @@ export default function EventForm({
       p_start_time: startTime || null,
       p_location: location,
       p_requires_participation: requiresParticipation,
-      p_classroom_ids: !isTask && scope === "classroom" ? classIds : [],
-      p_grade_ids: !isTask && scope === "grade" ? [gradeId] : [],
+      p_classroom_ids: isPlain && scope === "classroom" ? classIds : [],
+      p_grade_ids: isPlain && scope === "grade" ? [gradeId] : [],
       p_department_ids: [],
       p_due_at: eventType === "task" && dueAt ? new Date(dueAt).toISOString() : null,
       p_daily_participation: isMultiDay && requiresParticipation && dailyParticipation,
       p_assignee_ids: isTask ? assigneeIds : [],
+      p_description: description,
     };
 
     try {
@@ -248,9 +257,14 @@ export default function EventForm({
         <div className="flex gap-1">
           {(
             [
-              ["academic", "학사일정", "언제 무엇이 있다 (공지)"],
+              ["academic", "학사일정", "언제 무엇이 있다"],
               ["task", "업무", "누가 언제까지 무엇을 한다"],
-            ] as Array<["academic" | "task", string, string]>
+              ...(canPostNotice
+                ? ([["notice", "공지", "기간 동안 알리는 글"]] as Array<
+                    [Kind, string, string]
+                  >)
+                : []),
+            ] as Array<[Kind, string, string]>
           ).map(([v, l, hint]) => (
             <button
               key={v}
@@ -298,7 +312,7 @@ export default function EventForm({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="시작일">
+        <Field label={isNotice ? "게시 시작일" : "시작일"}>
           <input
             type="date"
             required
@@ -307,7 +321,7 @@ export default function EventForm({
             className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
           />
         </Field>
-        <Field label="종료일 (기간 일정만)">
+        <Field label={isNotice ? "게시 종료일" : "종료일 (기간 일정만)"}>
           <input
             type="date"
             value={endDate}
@@ -318,7 +332,7 @@ export default function EventForm({
         </Field>
       </div>
 
-      {!isTask && (
+      {isPlain && (
       <Field label="교시">
         <label className="mb-2 flex items-center gap-2 text-sm">
           <input
@@ -363,8 +377,8 @@ export default function EventForm({
       </Field>
       )}
 
-      <div className={`grid gap-4 ${isTask ? "" : "sm:grid-cols-2"}`}>
-        {!isTask && (
+      <div className={`grid gap-4 ${isPlain ? "sm:grid-cols-2" : ""}`}>
+        {isPlain && (
         <Field label="집합 시각 (선택)">
           <input
             type="time"
@@ -374,6 +388,7 @@ export default function EventForm({
           />
         </Field>
         )}
+        {!isNotice && (
         <Field label={isTask ? "비고 (선택)" : "장소"}>
           <input
             value={location}
@@ -382,9 +397,10 @@ export default function EventForm({
             placeholder={isTask ? "제출처 · 참고사항" : "홍대 전용관"}
           />
         </Field>
+        )}
       </div>
 
-      {!isTask && (
+      {isPlain && (
       <Field label={`대상 — ${selectedLabel}`}>
         <div className="mb-2 flex gap-1">
           {(
@@ -462,6 +478,21 @@ export default function EventForm({
       </Field>
       )}
 
+      {isNotice && (
+        <Field label="내용">
+          <textarea
+            rows={6}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
+            placeholder="선생님들께 알릴 내용을 적으세요."
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            게시 기간 동안 학사일정 화면 왼쪽에 표시됩니다.
+          </p>
+        </Field>
+      )}
+
       {isTask && (
         <Field
           label={`담당자 ${assigneeIds.length > 0 ? `— ${assigneeIds.length}명` : ""}`}
@@ -525,7 +556,7 @@ export default function EventForm({
         </Field>
       )}
 
-      {!isTask && (
+      {isPlain && (
       <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm">
         <input
           type="checkbox"
@@ -543,7 +574,7 @@ export default function EventForm({
       </label>
       )}
 
-      {requiresParticipation && isMultiDay && (
+      {isPlain && requiresParticipation && isMultiDay && (
         <div className="rounded-lg border border-slate-300 bg-white p-4">
           <p className="mb-2 text-sm font-medium">
             {startDate.slice(5).replace("-", "/")} ~ {endDate.slice(5).replace("-", "/")} · 여러 날 일정입니다

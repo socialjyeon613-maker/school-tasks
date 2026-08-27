@@ -13,7 +13,7 @@ export type StaffRoleKind =
   | "co_homeroom"
   | "member"
   | "subject";
-export type EventType = "academic" | "task";
+export type EventType = "academic" | "task" | "notice";
 export type EventStatus = "planned" | "ongoing" | "done" | "canceled";
 export type CategoryLane = "grid" | "side";
 export type ParticipationStatus = "pending" | "attended" | "absent";

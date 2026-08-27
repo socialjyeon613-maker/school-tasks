@@ -8,7 +8,7 @@ export default async function NewEventPage({
   searchParams,
 }: {
   params: Promise<{ schoolId: string }>;
-  searchParams: Promise<{ date?: string; grade?: string }>;
+  searchParams: Promise<{ date?: string; grade?: string; kind?: string }>;
 }) {
   const { schoolId } = await params;
   const sp = await searchParams;
@@ -40,6 +40,8 @@ export default async function NewEventPage({
         categories={categories ?? []}
         periods={periods ?? []}
         members={members}
+        canPostNotice={ctx.isHead || ctx.isAdmin}
+        defaultKind={sp.kind === "notice" && (ctx.isHead || ctx.isAdmin) ? "notice" : "academic"}
       />
     </main>
   );

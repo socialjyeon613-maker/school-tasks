@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -375,3 +375,37 @@ await db.exec(`select update_event('${task2}', '생활기록부 마감(연장)',
   null, false, array['${U.hr1}']::uuid[])`)
 const remain = await db.query(`select user_id, status from event_assignments where event_id='${task2}'`)
 console.log(`   ${remain.rows.length === 1 && remain.rows[0].status === 'done' ? '✅ 빠진 담당자만 제거, 남은 사람 상태 유지' : '❌ 예상과 다름'}`)
+
+console.log('\n=== 15. 공지 (08) ===')
+// 부장은 등록 가능
+await asUser('head')
+const { id: notice } = await one(`select create_event('${yearId}', '겨울방학 중 근무 안내', '2024-12-23'::date,
+  '2025-01-10'::date, null, 'notice', false, 3, 4, '11:00'::time, '교무실', true,
+  array['${cls['3-1']}']::uuid[], array['${grade3}']::uuid[], '{}'::uuid[],
+  null, true, array['${U.hr1}']::uuid[], '방학 중 근무는 교무실로 문의하세요.') as id`)
+const nv = await one(`select event_type, all_day, period_from, start_time, category_id, requires_participation, description from events where id='${notice}'`)
+console.log(`   ✅ 부장이 공지 등록`)
+console.log(`   공지에서 무시되는 값 — 교시:${nv.period_from ?? '없음'} / 시각:${nv.start_time ?? '없음'} / 분류:${nv.category_id ?? '없음'} / 참여체크:${nv.requires_participation}`)
+const nt = await one(`select count(*)::int n from event_targets where event_id='${notice}'`)
+const na = await one(`select count(*)::int n from event_assignments where event_id='${notice}'`)
+console.log(`   ${nt.n===0 && na.n===0 ? '✅' : '❌'} 대상 ${nt.n}건 / 담당자 ${na.n}건 (둘 다 0이어야 정상)`)
+console.log(`   본문: "${nv.description}"`)
+
+// 일반 교사는 공지 등록 불가 (일반 일정은 가능)
+await asUser('hr1')
+try {
+  await db.exec(`select create_event('${yearId}', '몰래공지', '2024-12-23'::date, '2024-12-24'::date,
+    null, 'notice', true, null, null, null, '', false,
+    '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '내용')`)
+  console.log('   ❌ 일반 교사가 공지를 올림 (버그)')
+} catch (e) { console.log(`   ✅ 일반 교사의 공지 등록 차단: ${e.message}`) }
+
+// 게시 기간
+const period = await one(`select start_date, end_date from events where id='${notice}'`)
+console.log(`   게시 기간: ${String(period.start_date).slice(4,15)} ~ ${String(period.end_date).slice(4,15)}`)
+
+// 달력 격자에는 안 나와야 함
+await asAuthed('hr1')
+const grid = await one(`select count(*)::int n from v_events_by_date
+  where academic_year_id='${yearId}' and event_id='${notice}'`)
+console.log(`   (참고) v_events_by_date 에는 ${grid.n}행 — 화면에서 event_type 으로 걸러냅니다`)

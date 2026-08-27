@@ -70,6 +70,7 @@ export default async function EditEventPage({
     location: ev.location,
     requiresParticipation: ev.requires_participation,
     dailyParticipation: ev.daily_participation,
+    description: ev.description,
     dueAt: ev.due_at,
     classroomIds: (targets ?? []).map((t) => t.classroom_id).filter(Boolean) as string[],
     gradeIds: (targets ?? []).map((t) => t.grade_id).filter(Boolean) as string[],
@@ -100,6 +101,7 @@ export default async function EditEventPage({
         categories={categories ?? []}
         periods={periods ?? []}
         members={members}
+        canPostNotice={ctx.isHead || ctx.isAdmin}
         initial={initial}
       />
     </main>
