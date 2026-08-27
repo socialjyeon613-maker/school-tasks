@@ -230,13 +230,10 @@ export default function EventForm({
     const supabase = createClient();
 
     try {
-      // 일정을 지우면 댓글 · 첨부 · 참여기록 행은 cascade 로 사라지지만
-      // 스토리지의 실제 파일은 남습니다. 먼저 지웁니다.
-      if (initial!.attachmentPaths.length) {
-        await supabase.storage.from("attachments").remove(initial!.attachmentPaths);
-      }
-
-      const { error } = await supabase.from("events").delete().eq("id", initial!.id);
+      // 지우지 않고 휴지통으로 보냅니다. 관리 화면에서 되돌릴 수 있습니다.
+      const { error } = await supabase.rpc("soft_delete_event", {
+        p_event: initial!.id,
+      });
       if (error) {
         setError("삭제할 권한이 없습니다.");
         return;
@@ -644,10 +641,10 @@ export default function EventForm({
                 이 일정을 삭제할까요?
               </p>
               <p className="mb-3 text-sm text-rose-800">
-                댓글 · 첨부파일
+                목록에서 사라집니다. 댓글 · 첨부파일
                 {initial!.participationCount > 0 &&
                   ` · 참여기록 ${initial!.participationCount}건`}
-                이 함께 삭제되며 <b>되돌릴 수 없습니다.</b>
+                은 그대로 남아 있어, 관리 화면의 <b>휴지통</b>에서 되돌릴 수 있습니다.
               </p>
               <div className="flex gap-2">
                 <button

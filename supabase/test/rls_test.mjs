@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -570,3 +570,51 @@ try {
   await db.query(`select import_events('${y2}', '[]'::jsonb)`)
   console.log('   ❌ 외부인이 가져오기 실행')
 } catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }
+
+console.log('\n=== 19. 변경 이력 · 휴지통 (12) ===')
+await asUser('head')
+const { id: ev9 } = await one(`select create_event('${yearId}', '감사테스트', '2024-12-29'::date, null,
+  null, 'academic', true, null, null, null, '강당', true,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '') as id`)
+await db.exec(`select update_event('${ev9}', '감사테스트(수정)', '2024-12-30'::date, null,
+  null, 'academic', true, null, null, null, '체육관', true,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '')`)
+
+await asUser('admin')
+const trail = await db.query(`select action, entity, label, changes from audit_log
+  where record_id='${ev9}' order by id`)
+console.log(`   ✅ 이력 ${trail.rows.length}건`)
+for (const t of trail.rows) {
+  const ch = t.changes ? Object.keys(t.changes).filter(k=>k!=='updated_at') : []
+  console.log(`     ${t.action} ${t.entity} "${t.label}"${ch.length?` — ${ch.join(', ')}`:''}`)
+}
+
+// soft delete → 목록에서 사라지되 기록은 남음
+await asAuthed('head')
+await db.query(`select soft_delete_event($1)`, [ev9])
+const visible = await one(`select count(*)::int n from events where id='${ev9}'`)
+console.log(`   ${visible.n === 0 ? '✅ 삭제 후 조회에서 사라짐' : '❌ 아직 보임'}`)
+await asUser('admin')
+const stillThere = await one(`select count(*)::int n from events where id='${ev9}'`)
+const parts9 = await one(`select count(*)::int n from participations where event_id='${ev9}'`)
+console.log(`   ✅ 실제 행은 남아 있음 (${stillThere.n}건) / 참여기록 ${parts9.n}건 보존`)
+
+// 휴지통 목록 + 복구
+await asAuthed('head')
+const bin = await db.query(`select title, participation_count from deleted_events('${school}')`)
+console.log(`   ✅ 휴지통: ${bin.rows.map(r=>`${r.title}(참여 ${r.participation_count})`).join(', ')}`)
+await db.query(`select restore_event($1)`, [ev9])
+const back = await one(`select count(*)::int n from events where id='${ev9}'`)
+console.log(`   ${back.n === 1 ? '✅ 되돌리니 다시 보임' : '❌ 복구 실패'}`)
+
+// 권한
+await asAuthed('hr1')
+try {
+  await db.query(`select * from deleted_events('${school}')`)
+  console.log('   ❌ 일반 담임이 휴지통을 봄')
+} catch { console.log('   ✅ 일반 담임은 휴지통 못 봄') }
+const auditSeen = await one(`select count(*)::int n from audit_log`)
+console.log(`   ${auditSeen.n === 0 ? '✅ 일반 담임은 변경 이력 못 봄' : '❌ 이력이 보임 ('+auditSeen.n+'건)'}`)
+await asAuthed('admin')
+const adminSeen = await one(`select count(*)::int n from audit_log`)
+console.log(`   ✅ 관리자에게는 ${adminSeen.n}건 보임`)
