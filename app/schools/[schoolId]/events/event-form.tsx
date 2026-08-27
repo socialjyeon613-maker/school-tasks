@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import DeleteEvent from "./delete-event";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compactClassLabel, teacherColor } from "@/lib/format";
@@ -147,7 +148,6 @@ export default function EventForm({
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState(false);
   // 일정은 만들어졌는데 명단 설정만 실패한 경우 — 다시 등록하면 중복이 생깁니다
   const [createdId, setCreatedId] = useState("");
 
@@ -278,29 +278,7 @@ export default function EventForm({
     }
   }
 
-  async function remove() {
-    setBusy(true);
-    setError("");
-    const supabase = createClient();
 
-    try {
-      // 지우지 않고 휴지통으로 보냅니다. 관리 화면에서 되돌릴 수 있습니다.
-      const { error } = await supabase.rpc("soft_delete_event", {
-        p_event: initial!.id,
-      });
-      if (error) {
-        setError("삭제할 권한이 없습니다.");
-        return;
-      }
-
-      router.push(`/schools/${schoolId}/calendar`);
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <form onSubmit={submit} className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
@@ -744,44 +722,13 @@ export default function EventForm({
 
       {isEdit && (
         <div className="border-t border-slate-200 pt-4">
-          {confirmDelete ? (
-            <div className="rounded-lg border border-rose-300 bg-rose-50 p-4">
-              <p className="mb-1 text-sm font-medium text-rose-900">
-                이 일정을 삭제할까요?
-              </p>
-              <p className="mb-3 text-sm text-rose-800">
-                목록에서 사라집니다. 댓글 · 첨부파일
-                {initial!.participationCount > 0 &&
-                  ` · 참여기록 ${initial!.participationCount}건`}
-                은 그대로 남아 있어, 관리 화면의 <b>휴지통</b>에서 되돌릴 수 있습니다.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={remove}
-                  disabled={busy}
-                  className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-                >
-                  {busy ? "삭제 중…" : "삭제합니다"}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              className="text-sm text-slate-500 hover:text-rose-600"
-            >
-              일정 삭제
-            </button>
-          )}
+          <DeleteEvent
+            schoolId={schoolId}
+            eventId={initial!.id}
+            title={title}
+            participationCount={initial!.participationCount}
+            variant="link"
+          />
         </div>
       )}
     </form>

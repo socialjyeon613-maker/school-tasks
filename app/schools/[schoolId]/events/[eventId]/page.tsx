@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeleteEvent from "../delete-event";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
@@ -232,12 +233,20 @@ export default async function EventPage({
         <div className="mt-2 flex flex-wrap items-start gap-3">
           <h1 className="text-xl font-bold">{ev.title}</h1>
           {canEdit && (
-            <Link
-              href={`/schools/${schoolId}/events/${eventId}/edit`}
-              className="no-print ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
-            >
-              편집
-            </Link>
+            <div className="no-print ml-auto flex shrink-0 gap-2">
+              <Link
+                href={`/schools/${schoolId}/events/${eventId}/edit`}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+              >
+                편집
+              </Link>
+              <DeleteEvent
+                schoolId={schoolId}
+                eventId={eventId}
+                title={ev.title}
+                rosterCount={roster.length}
+              />
+            </div>
           )}
         </div>
 
