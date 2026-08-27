@@ -35,6 +35,7 @@ export default async function SchoolLayout({
       badge: typeof unreadMsg === "number" && unreadMsg > 0 ? unreadMsg : 0,
     },
     ...(ctx.isAdmin ? [{ href: `${base}/admin`, label: "관리" }] : []),
+    { href: "/help", label: "도움말" },
   ];
 
   return (

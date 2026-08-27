@@ -7,6 +7,8 @@ import { getVerifiedClaims } from "@/lib/supabase/auth";
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
+  // 도움말 — 가입 전에 링크만 받아 읽어볼 수 있어야 합니다.
+  "/help",
   // PWA — 브라우저가 로그인 없이 가져갑니다.
   "/manifest.webmanifest",
   "/sw.js",

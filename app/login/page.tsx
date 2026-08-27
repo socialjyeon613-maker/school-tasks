@@ -99,6 +99,12 @@ export default function LoginPage() {
         <p className="mb-6 text-sm text-slate-500">
           학사일정 · 업무 분장 · 학생 참여
         </p>
+        <p className="mb-4 text-sm text-slate-500">
+          처음이신가요?{" "}
+          <Link href="/help" className="font-medium text-slate-900 underline">
+            도움말 보기
+          </Link>
+        </p>
         <Suspense fallback={null}>
           <LoginForm />
         </Suspense>

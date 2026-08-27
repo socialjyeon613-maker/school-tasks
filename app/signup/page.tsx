@@ -116,6 +116,12 @@ export default function SignupPage() {
     <main className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="mb-6 text-xl font-bold">가입</h1>
+        <p className="mb-4 text-sm text-slate-500">
+          처음이신가요?{" "}
+          <Link href="/help" className="font-medium text-slate-900 underline">
+            도움말 보기
+          </Link>
+        </p>
         <Suspense fallback={null}>
           <SignupForm />
         </Suspense>
