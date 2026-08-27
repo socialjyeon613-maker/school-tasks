@@ -254,7 +254,15 @@ export default async function EventPage({
       {/* 부장 현황판 */}
       {ev.requires_participation && summary && (
         <section className="mt-4 rounded-xl border border-slate-200 bg-white p-6">
-          <h2 className="mb-1 font-semibold">학생 참여 현황</h2>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <h2 className="font-semibold">학생 참여 현황</h2>
+            <Link
+              href={`/schools/${schoolId}/participation?event=${eventId}`}
+              className="no-print ml-auto rounded-lg border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700"
+            >
+              엑셀 내보내기
+            </Link>
+          </div>
           <p className="mb-3 text-xs text-slate-500">
             모든 반의 인원수를 볼 수 있습니다. 입력과 학생 이름은 담당 반만 열립니다.
           </p>

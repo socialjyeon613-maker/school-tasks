@@ -50,8 +50,14 @@ export default async function AdminPage({
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-bold">관리</h1>
         <Link
-          href={`/schools/${schoolId}/transfer`}
+          href={`/schools/${schoolId}/participation`}
           className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+        >
+          참여 현황 내보내기
+        </Link>
+        <Link
+          href={`/schools/${schoolId}/transfer`}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
         >
           일정 내보내기 · 가져오기
         </Link>
