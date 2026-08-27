@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`, `${SUP}/16_roster_setup.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -786,3 +786,52 @@ console.log(`   학생 조회:   ${stillMine.rows.map(r=>r.name).join(', ')} ${s
 const srch = await db.query(`select subtitle from search_school('${school}','학생') where kind='student'`)
 const srchCls = [...new Set(srch.rows.map(r=>r.subtitle.split(' ')[0]))]
 console.log(`   통합 검색:   ${srchCls.join(', ')} ${srchCls.length===1?'✅ 자기 반만':'❌ 넓어짐'}`)
+
+{
+console.log('\n=== 23. 등록할 때 명단까지 한 번에 (16) ===')
+// 담임(hr1)이 일감을 만들고 바로 명단을 붙입니다
+await asUser('hr1')
+const { id: t2 } = await one(`select create_event('${yearId}', '2027 자사고 지원', '2026-12-05'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '') as id`)
+
+// 등록 화면처럼 일감 없이 학생 찾기
+const cands = await db.query(
+  `select classroom_name, student_name from search_students_for_roster($1,'학생',null)`, [school])
+const ccls = [...new Set(cands.rows.map(r=>r.classroom_name))].sort()
+console.log(`   일감 없이 찾기: ${ccls.join(', ')} (${cands.rows.length}명) ${ccls.includes('3-2')?'✅':'❌'}`)
+
+const pickN = cands.rows.length
+const ids = (await db.query(`select student_id from search_students_for_roster($1,'학생',null) limit 3`, [school])).rows.map(r=>r.student_id)
+const setup = await db.query(`select setup_roster($1, $2::jsonb, 'assignees', $3::uuid[]) as r`,
+  [t2, JSON.stringify([
+    {name:'준비',kind:'active'},{name:'원서접수',kind:'active'},
+    {name:'추첨',kind:'active'},{name:'합격',kind:'success'}]), ids])
+console.log(`   ✅ 한 번에 설정: ${JSON.stringify(setup.rows[0].r)}`)
+const stg = await db.query(`select name, kind from event_stages where event_id='${t2}' order by position`)
+console.log(`   단계 순서: ${stg.rows.map(r=>`${r.name}(${r.kind})`).join(' → ')}`)
+
+// 담임은 '전 교직원' 으로 못 넓힘
+try {
+  await db.query(`select setup_roster($1,'[]'::jsonb,'school','{}'::uuid[])`, [t2])
+  console.log('   ❌ 담임이 공개 범위를 넓힘')
+} catch (e) { console.log(`   ✅ 담임은 전 교직원 공개 불가: ${e.message}`) }
+
+// 부장은 가능
+await asUser('head')
+await db.query(`select setup_roster($1,'[]'::jsonb,'school','{}'::uuid[])`, [t2])
+const rvis = await one(`select roster_visibility from events where id='${t2}'`)
+console.log(`   ✅ 부장은 가능 → ${rvis.roster_visibility}`)
+
+// 순서 바꿔 다시 저장해도 학생의 현재 단계가 유지되는지
+await asUser('hr1')
+const before2 = await one(`select count(*)::int n from event_roster where event_id='${t2}' and stage_id is not null`)
+await db.query(`select setup_roster($1, $2::jsonb, null, '{}'::uuid[])`,
+  [t2, JSON.stringify([
+    {name:'원서접수',kind:'active'},{name:'준비',kind:'active'},
+    {name:'추첨',kind:'active'},{name:'합격',kind:'success'}])])
+const after2 = await one(`select count(*)::int n from event_roster where event_id='${t2}' and stage_id is not null`)
+const order2 = await db.query(`select name from event_stages where event_id='${t2}' order by position`)
+console.log(`   순서 변경 → ${order2.rows.map(r=>r.name).join(' → ')}`)
+console.log(`   ${before2.n === after2.n ? '✅ 학생 단계 유지됨' : '❌ 단계가 날아감'} (${before2.n}→${after2.n})`)
+}

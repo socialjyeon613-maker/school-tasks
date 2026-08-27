@@ -99,6 +99,7 @@ export default async function EditEventPage({
         periods={periods ?? []}
         members={members}
         canPostNotice={ctx.canPostNotice}
+        canOpenRoster={ctx.isHead || ctx.isAdmin}
         initial={initial}
       />
     </main>

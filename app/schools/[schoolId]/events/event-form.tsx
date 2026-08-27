@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { compactClassLabel, teacherColor } from "@/lib/format";
 import { categoryStyle } from "@/lib/types";
+import RosterSetup, { type RosterDraft } from "./roster-setup";
 
 interface Grade { id: string; grade_no: number; name: string }
 interface Classroom { id: string; grade_id: string; class_no: number; name: string }
@@ -52,6 +53,7 @@ export default function EventForm({
   periods,
   members,
   canPostNotice,
+  canOpenRoster,
   defaultKind = "academic",
   initial,
 }: {
@@ -69,6 +71,8 @@ export default function EventForm({
   members: Member[];
   /** 공지 등록 권한 (부장 · 관리자) */
   canPostNotice: boolean;
+  /** 명단 공개 범위를 전 교직원으로 넓힐 수 있는가 (부장 · 관리자) */
+  canOpenRoster: boolean;
   defaultKind?: Kind;
   /** 없으면 등록 모드, 있으면 편집 모드 */
   initial?: EventInitial;
@@ -102,6 +106,12 @@ export default function EventForm({
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     initial?.assigneeIds ?? []
   );
+  const [useRoster, setUseRoster] = useState(false);
+  const [roster, setRoster] = useState<RosterDraft>({
+    stages: [],
+    visibility: "assignees",
+    students: [],
+  });
   const [dueAt, setDueAt] = useState(
     initial?.dueAt ? toLocalInput(initial.dueAt) : ""
   );
@@ -138,6 +148,8 @@ export default function EventForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // 일정은 만들어졌는데 명단 설정만 실패한 경우 — 다시 등록하면 중복이 생깁니다
+  const [createdId, setCreatedId] = useState("");
 
   const isTask = eventType === "task";
   const isNotice = eventType === "notice";
@@ -176,6 +188,22 @@ export default function EventForm({
       setError("대상 반을 하나 이상 선택하세요.");
       return;
     }
+    if (!isEdit && useRoster) {
+      const names = roster.stages.map((st) => st.name.trim());
+      if (names.length === 0) {
+        setError("진행 명단을 쓰려면 단계를 하나 이상 만드세요.");
+        return;
+      }
+      if (names.some((n) => !n)) {
+        setError("이름이 빈 단계가 있습니다.");
+        return;
+      }
+      if (new Set(names).size !== names.length) {
+        setError("같은 이름의 단계가 있습니다.");
+        return;
+      }
+    }
+
     setBusy(true);
     setError("");
 
@@ -215,7 +243,33 @@ export default function EventForm({
         return;
       }
 
-      router.push(`/schools/${schoolId}/events/${isEdit ? initial!.id : data}`);
+      const eventId = isEdit ? initial!.id : (data as string);
+
+      // 진행 명단은 일정이 만들어진 뒤에 붙입니다.
+      // 여기서 실패해도 일정은 남으므로, 상세 화면에서 이어서 설정할 수 있습니다.
+      if (!isEdit && useRoster && roster.stages.length > 0) {
+        const { error: rErr } = await supabase.rpc("setup_roster", {
+          p_event: eventId,
+          p_stages: roster.stages.map((st) => ({
+            name: st.name.trim(),
+            kind: st.kind,
+          })),
+          p_visibility: roster.visibility,
+          p_students: roster.students.map((st) => st.id),
+        });
+        if (rErr) {
+          // 여기서 화면을 옮기면 이유를 못 보고, 다시 등록하면 일정이 중복됩니다.
+          // 그래서 머무른 채 알리고, 만들어진 일정으로 갈 길만 열어 둡니다.
+          setCreatedId(eventId);
+          setError(
+            `일정 "${title}" 은 등록됐지만 진행 명단 설정에 실패했습니다. ` +
+              `아래 단추로 이동해 상세 화면에서 이어서 설정하세요. (${rErr.message})`
+          );
+          return;
+        }
+      }
+
+      router.push(`/schools/${schoolId}/events/${eventId}`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.");
@@ -604,6 +658,48 @@ export default function EventForm({
         </div>
       )}
 
+      {!isNotice && !isEdit && (
+        <div>
+          <label className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm">
+            <input
+              type="checkbox"
+              checked={useRoster}
+              onChange={(e) => {
+                setUseRoster(e.target.checked);
+                if (e.target.checked && roster.stages.length === 0)
+                  setRoster((r) => ({
+                    ...r,
+                    stages: [
+                      { name: "준비", kind: "active" },
+                      { name: "진행", kind: "active" },
+                      { name: "완료", kind: "success" },
+                    ],
+                  }));
+              }}
+              className="mt-0.5"
+            />
+            <span>
+              <b>진행 명단</b>
+              <span className="block text-xs text-slate-500">
+                반을 가로질러 학생을 골라 담고 단계별로 관리합니다.
+                예) 2027 과학고 진학 — 준비 → 서류제출 → 면접 → 합격
+              </span>
+            </span>
+          </label>
+
+          {useRoster && (
+            <div className="mt-2">
+              <RosterSetup
+                schoolId={schoolId}
+                value={roster}
+                onChange={setRoster}
+                canOpenToSchool={canOpenRoster}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
       {isEdit && initial!.participationCount > 0 && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
           이 일정에는 이미 <b>{initial!.participationCount}건</b>의 참여 기록이 있습니다.
@@ -616,22 +712,35 @@ export default function EventForm({
         <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
       )}
 
-      <div className="flex gap-2">
+      {createdId ? (
         <button
           type="button"
-          onClick={() => router.back()}
-          className="flex-1 rounded-lg border border-slate-300 py-2.5 font-medium"
+          onClick={() => {
+            router.push(`/schools/${schoolId}/events/${createdId}`);
+            router.refresh();
+          }}
+          className="w-full rounded-lg bg-slate-900 py-2.5 font-medium text-white"
         >
-          취소
+          만들어진 일정으로 이동
         </button>
-        <button
-          type="submit"
-          disabled={busy}
-          className="flex-1 rounded-lg bg-slate-900 py-2.5 font-medium text-white disabled:opacity-50"
-        >
-          {busy ? "저장 중…" : isEdit ? "저장" : "등록"}
-        </button>
-      </div>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="flex-1 rounded-lg border border-slate-300 py-2.5 font-medium"
+          >
+            취소
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex-1 rounded-lg bg-slate-900 py-2.5 font-medium text-white disabled:opacity-50"
+          >
+            {busy ? "저장 중…" : isEdit ? "저장" : "등록"}
+          </button>
+        </div>
+      )}
 
       {isEdit && (
         <div className="border-t border-slate-200 pt-4">

@@ -41,6 +41,7 @@ export default async function NewEventPage({
         periods={periods ?? []}
         members={members}
         canPostNotice={ctx.canPostNotice}
+        canOpenRoster={ctx.isHead || ctx.isAdmin}
         defaultKind={sp.kind === "notice" && ctx.canPostNotice ? "notice" : "academic"}
       />
     </main>
