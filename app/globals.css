@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family:
+    "Pretendard", -apple-system, BlinkMacSystemFont, "Malgun Gothic",
+    "맑은 고딕", system-ui, sans-serif;
+}
+
+/* 일정표는 결국 인쇄해서 붙입니다. 화면 조작 요소는 인쇄에서 뺍니다. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-tight {
+    font-size: 10px;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}
