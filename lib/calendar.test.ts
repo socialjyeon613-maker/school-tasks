@@ -174,4 +174,62 @@ check("공지: 관리자라도 부장이 아니면 불가", () => {
   );
 });
 
-console.log(`\n${passed}개 통과\n`);
+
+/* ------------------------------------------------------------------
+   엑셀 왕복 — 내보낸 값을 다시 읽어 같은 값이 나오는지
+------------------------------------------------------------------ */
+import {
+  decodeClassNos,
+  encodeClassNos,
+  shiftDate,
+  toBool,
+  toDateString,
+} from "./excel-schema";
+
+console.log("\n엑셀 왕복");
+
+check("반 목록 왕복", () => {
+  for (const nos of [[1, 2, 3, 4, 5], [3], [1, 3, 5], []]) {
+    assert.deepEqual(decodeClassNos(encodeClassNos(nos)), nos);
+  }
+});
+check("엑셀에서 손으로 고친 표기도 읽음", () => {
+  assert.deepEqual(decodeClassNos("1~5"), [1, 2, 3, 4, 5]);
+  assert.deepEqual(decodeClassNos("1-3, 7"), [1, 2, 3, 7]);
+  assert.deepEqual(decodeClassNos("1,2,3반"), [1, 2, 3]);
+  assert.deepEqual(decodeClassNos(" 4 , 5 "), [4, 5]);
+});
+check("중복·역순도 정리", () => {
+  assert.deepEqual(decodeClassNos("5,3,3,1"), [1, 3, 5]);
+  assert.deepEqual(decodeClassNos("5~3"), [3, 4, 5]);
+});
+check("날짜 — Date 객체와 문자열 모두", () => {
+  assert.equal(toDateString(new Date(2026, 11, 10)), "2026-12-10");
+  assert.equal(toDateString("2026-12-10"), "2026-12-10");
+  assert.equal(toDateString("2026/12/9"), "2026-12-09");
+  assert.equal(toDateString(""), "");
+});
+check("참/거짓 표기", () => {
+  for (const v of ["O", "o", "Y", "예", "TRUE", "1"]) assert.equal(toBool(v), true);
+  for (const v of ["", "X", "아니오", "0"]) assert.equal(toBool(v), false);
+});
+
+check("연도 이동 — 같은 날짜", () => {
+  assert.equal(shiftDate("2025-12-10", "sameDate", 1), "2026-12-10");
+});
+check("연도 이동 — 같은 요일 (364일)", () => {
+  // 2025-12-10 은 수요일. 364일 뒤도 수요일이어야 합니다.
+  const moved = shiftDate("2025-12-10", "sameWeekday", 1);
+  assert.equal(moved, "2026-12-09");
+  assert.equal(
+    new Date(moved + "T00:00:00").getDay(),
+    new Date("2025-12-10T00:00:00").getDay()
+  );
+});
+check("이동 안 함", () => {
+  assert.equal(shiftDate("2025-12-10", "none", 1), "2025-12-10");
+});
+
+console.log(`
+${passed}개 통과
+`);

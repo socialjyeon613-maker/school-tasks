@@ -17,6 +17,7 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 8. `08_notices.sql` — 공지
 9. `09_messages.sql` — 쪽지 + 공지 권한을 부장으로 축소
 10. `10_notifications.sql` — 알림 (트리거 + 마감 리마인드)
+11. `11_import_events.sql` — 엑셀에서 일정 가져오기
 
 > 10 의 마감 리마인드는 `pg_cron` 이 켜져 있으면 매일 한국시각 07:00 에
 > 자동으로 돕니다. 없으면 조용히 넘어가니, 대시보드 > Database > Extensions

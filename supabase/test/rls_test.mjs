@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -525,3 +525,48 @@ const cnt = await one(`select unread_notification_count('${school}') as n`)
 await db.query(`select mark_notifications_read($1, null)`, [school])
 const after2 = await one(`select unread_notification_count('${school}') as n`)
 console.log(`   ✅ 안 읽음 ${cnt.n}건 → 모두 읽음 후 ${after2.n}건`)
+
+console.log('\n=== 18. 일정 가져오기 (11) ===')
+// 새 학년도를 만들고 작년 일정을 옮겨봅니다
+await asUser('admin')
+const { id: y2 } = await one(`insert into academic_years (school_id, year, name, is_current)
+  values ('${school}', 2025, '2025학년도', false) returning id`)
+await db.exec(`select create_classrooms('${y2}', 3, 10)`)
+await db.exec(`insert into event_categories (school_id, academic_year_id, name, color, lane)
+               values ('${school}','${y2}','체험·관람','emerald','grid')`)
+await db.exec(`insert into school_members (school_id, academic_year_id, user_id, role, status)
+  select '${school}','${y2}', user_id, role, 'active' from school_members where academic_year_id='${yearId}'`)
+
+const impRows = [
+  { type:'academic', category:'체험·관람', title:'난타 공연', start_date:'2025-12-10',
+    all_day:false, period_from:3, period_to:4, start_time:'11:00', location:'홍대 전용관',
+    grade_no:3, class_nos:[1,2,3,4,5], requires_participation:true },
+  { type:'academic', category:'없는분류', title:'분류없는 일정', start_date:'2025-12-11', grade_no:3 },
+  { type:'academic', category:'', title:'없는학년', start_date:'2025-12-12', grade_no:9 },
+  { type:'task', category:'', title:'계획서 제출', start_date:'2025-12-15',
+    due_at:'2025-12-16 17:00', assignee_emails:['hr1@sen.go.kr'] },
+  { type:'academic', category:'', title:'', start_date:'2025-12-13' },
+  { type:'academic', category:'', title:'날짜없음' },
+]
+const impRes = await db.query(`select import_events('${y2}', $1::jsonb) as r`, [JSON.stringify(impRows)])
+const rep = impRes.rows[0].r
+console.log(`   ${rep.total}건 중 ${rep.created}건 등록`)
+console.log(`   경고 ${rep.warnings.length}건: ${rep.warnings.map(w=>w.message).join(' / ')}`)
+console.log(`   실패 ${rep.errors.length}건: ${rep.errors.map(e=>e.message).join(' / ')}`)
+
+const imported = await one(`select title, period_from, period_to, location, requires_participation
+                       from events where academic_year_id='${y2}' and title='난타 공연'`)
+console.log(`   ✅ 값 보존: ${imported.title} / ${imported.period_from}~${imported.period_to}교시 / ${imported.location} / 참여체크 ${imported.requires_participation}`)
+const impTg = await one(`select count(*)::int n from event_targets t
+  join events e on e.id=t.event_id where e.academic_year_id='${y2}' and e.title='난타 공연' and t.classroom_id is not null`)
+console.log(`   ${impTg.n === 5 ? '✅' : '❌'} 대상 반 ${impTg.n}개 (1~5반)`)
+const impAsg = await one(`select count(*)::int n from event_assignments a
+  join events e on e.id=a.event_id where e.academic_year_id='${y2}' and e.title='계획서 제출'`)
+console.log(`   ${impAsg.n === 1 ? '✅' : '❌'} 담당자 이메일로 매칭 ${impAsg.n}명`)
+
+// 권한 없는 사람은?
+await asUser('outsider')
+try {
+  await db.query(`select import_events('${y2}', '[]'::jsonb)`)
+  console.log('   ❌ 외부인이 가져오기 실행')
+} catch (e) { console.log(`   ✅ 외부인 차단: ${e.message}`) }

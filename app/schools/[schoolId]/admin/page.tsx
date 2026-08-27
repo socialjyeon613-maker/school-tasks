@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
@@ -46,7 +47,15 @@ export default async function AdminPage({
 
   return (
     <main className="mx-auto max-w-4xl space-y-6 px-4 py-6">
-      <h1 className="text-lg font-bold">관리</h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-lg font-bold">관리</h1>
+        <Link
+          href={`/schools/${schoolId}/transfer`}
+          className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+        >
+          일정 내보내기 · 가져오기
+        </Link>
+      </div>
 
       <Section title="1. 학년 · 반 편성">
         <GradeSetup yearId={ctx.year.id} />
