@@ -19,9 +19,10 @@ export default async function SchoolLayout({
   if (!ctx) notFound();
 
   const supabase = await createClient();
-  const { data: unread } = await supabase.rpc("unread_message_count", {
-    p_school: schoolId,
-  });
+  const [{ data: unreadMsg }, { data: unreadNoti }] = await Promise.all([
+    supabase.rpc("unread_message_count", { p_school: schoolId }),
+    supabase.rpc("unread_notification_count", { p_school: schoolId }),
+  ]);
 
   const base = `/schools/${schoolId}`;
   const nav: Array<{ href: string; label: string; badge?: number }> = [
@@ -31,7 +32,7 @@ export default async function SchoolLayout({
     {
       href: `${base}/messages`,
       label: "쪽지",
-      badge: typeof unread === "number" && unread > 0 ? unread : 0,
+      badge: typeof unreadMsg === "number" && unreadMsg > 0 ? unreadMsg : 0,
     },
     ...(ctx.isAdmin ? [{ href: `${base}/admin`, label: "관리" }] : []),
   ];
@@ -63,6 +64,18 @@ export default async function SchoolLayout({
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <Link
+              href={`${base}/notifications`}
+              aria-label="알림"
+              className="relative rounded-lg px-2 py-1.5 text-lg leading-none transition hover:bg-slate-100"
+            >
+              🔔
+              {typeof unreadNoti === "number" && unreadNoti > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+                  {unreadNoti > 99 ? "99+" : unreadNoti}
+                </span>
+              )}
+            </Link>
             {ctx.roles.length > 1 && ctx.activeRole && (
               <RoleSwitcher
                 schoolId={schoolId}

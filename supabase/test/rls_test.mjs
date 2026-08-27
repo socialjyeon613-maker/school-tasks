@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -468,3 +468,60 @@ try {
 await db.query(`select mark_messages_read($1,$2)`, [school, U.hr2])
 const after = await one(`select unread_message_count('${school}') as n`)
 console.log(`   ✅ 읽음 처리 후 안 읽음 ${after.n}건`)
+
+console.log('\n=== 17. 알림 (10) ===')
+const notiOf = async (u) => (await one(
+  `select count(*)::int n from notifications where user_id='${U[u]}'`)).n
+
+// 쪽지 → 받는 사람에게만
+await asUser('admin')
+const before = await notiOf('hr2')
+const beforeSender = await notiOf('hr1')   // hr1 은 앞서 받은 쪽지 알림이 이미 있습니다
+await asAuthed('hr1')
+await db.query(`insert into messages (school_id, sender_id, recipient_id, body) values ($1,$2,$3,$4)`,
+  [school, U.hr1, U.hr2, '알림 테스트'])
+await asUser('admin')
+const afterR = await notiOf('hr2')
+const afterS = await notiOf('hr1')
+console.log(`   ${afterR > before ? '✅' : '❌'} 쪽지 받은 사람에게 알림 생성 (${before}→${afterR})`)
+console.log(`   ${afterS === beforeSender ? '✅' : '❌'} 보낸 사람에게는 안 생김 (${beforeSender}→${afterS})`)
+
+// 업무 배정 → 배정된 사람
+await asUser('head')
+const { id: t3 } = await one(`select create_event('${yearId}', '알림용 업무', '2024-12-28'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  now() + interval '1 day', false, array['${U.hr1}']::uuid[], '') as id`)
+await asUser('admin')
+const asgNoti = await one(`select title from notifications where user_id='${U.hr1}' and kind='assigned' order by created_at desc limit 1`)
+console.log(`   ✅ 배정 알림: "${asgNoti?.title ?? '없음'}"`)
+
+// 공지 → 전 교직원
+await asUser('head')
+await db.exec(`select create_event('${yearId}', '알림용 공지', '2024-12-28'::date, '2024-12-30'::date,
+  null, 'notice', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '내용')`)
+await asUser('admin')
+const noticeNoti = await one(`select count(distinct user_id)::int n from notifications where kind='notice'`)
+console.log(`   ✅ 공지 알림 ${noticeNoti.n}명에게 (작성자 제외)`)
+
+// 마감 임박 · 참여 미입력
+const made = await one(`select create_due_reminders() as n`)
+console.log(`   ✅ 예약 알림 ${made.n}건 생성`)
+const kinds = await db.query(`select kind, count(*)::int n from notifications group by kind order by kind`)
+console.log(`   종류별: ${kinds.rows.map(r=>`${r.kind} ${r.n}`).join(' / ')}`)
+
+// 두 번 돌려도 안 쌓임
+const again = await one(`select create_due_reminders() as n`)
+const total1 = await one(`select count(*)::int n from notifications where kind in ('due_soon','participation_pending')`)
+await db.exec(`select create_due_reminders()`)
+const total2 = await one(`select count(*)::int n from notifications where kind in ('due_soon','participation_pending')`)
+console.log(`   ${total1.n === total2.n ? '✅ 여러 번 돌려도 중복 안 쌓임' : '❌ 중복 생성됨 '+total1.n+'→'+total2.n}`)
+
+// 남의 알림은 안 보임
+await asAuthed('hr2')
+const mineOnly = await db.query(`select distinct user_id from notifications`)
+console.log(`   ${mineOnly.rows.length <= 1 ? '✅ 내 알림만 보임' : '❌ 남의 알림이 보임'}`)
+const cnt = await one(`select unread_notification_count('${school}') as n`)
+await db.query(`select mark_notifications_read($1, null)`, [school])
+const after2 = await one(`select unread_notification_count('${school}') as n`)
+console.log(`   ✅ 안 읽음 ${cnt.n}건 → 모두 읽음 후 ${after2.n}건`)

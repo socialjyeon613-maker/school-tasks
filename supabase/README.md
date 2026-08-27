@@ -16,6 +16,12 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 7. `07_task_assignees.sql` — 업무 일정에 담당자 지정
 8. `08_notices.sql` — 공지
 9. `09_messages.sql` — 쪽지 + 공지 권한을 부장으로 축소
+10. `10_notifications.sql` — 알림 (트리거 + 마감 리마인드)
+
+> 10 의 마감 리마인드는 `pg_cron` 이 켜져 있으면 매일 한국시각 07:00 에
+> 자동으로 돕니다. 없으면 조용히 넘어가니, 대시보드 > Database > Extensions
+> 에서 켠 뒤 10 을 다시 실행하거나 외부 스케줄러로
+> `select create_due_reminders();` 를 호출하세요.
 
 > 06 은 `participations` 의 기본키를 `(event_id, student_id)` 에서
 > `(event_id, student_id, on_date)` 로 넓힙니다. 기존 기록은 일정 시작일로
