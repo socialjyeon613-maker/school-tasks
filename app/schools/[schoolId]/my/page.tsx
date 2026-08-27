@@ -5,6 +5,7 @@ import { getSchoolContext } from "@/lib/school";
 import { dueLabel, firstOf, formatDate, formatDateTime, periodLabel, toISODate } from "@/lib/format";
 import { categoryStyle, type AssignmentStatus, type EventOnDate } from "@/lib/types";
 import MyAssignment from "./my-assignment";
+import CalendarSubscribe from "./calendar-subscribe";
 
 /**
  * '내 할 일' — 전 교직원에게 모든 일정을 다 보여주면 아무도 안 봅니다.
@@ -184,6 +185,8 @@ export default async function MyPage({
           ))}
         </ul>
       )}
+
+      <CalendarSubscribe schoolId={schoolId} />
     </main>
   );
 }

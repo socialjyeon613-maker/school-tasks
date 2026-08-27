@@ -31,6 +31,8 @@
 | `/schools/[id]/tasks` | 업무 현황 | 부장·관리자. 업무별 진행률과 **미완료자 이름** |
 | `/schools/[id]/messages` | 쪽지 | 교직원 1:1, 당사자만 열람 |
 | `/schools/[id]/notifications` | 알림 | 쪽지·배정·댓글·공지·마감·미입력 |
+| `/schools/[id]/search` | 검색 | 일정 · 첨부파일 · 학생(담당 반만) |
+| `/schools/[id]/audit` | 변경 이력 · 휴지통 | 관리자만 |
 | `/schools/[id]/participation` | 참여 현황 내보내기 | 반별 · 총원 · 불참 엑셀 |
 | `/schools/[id]/transfer` | 일정 내보내기 · 가져오기 | 엑셀 왕복. 새 학년도로 옮기기 |
 | `/schools/[id]/admin` | 관리 | 학년·반 편성, 학생 명단, 초대, 보직 배정 |
@@ -93,7 +95,7 @@ npm run test:rls  # RLS 권한 격리 (PGlite, Supabase 계정 불필요)
 
 ## 아직 없는 것
 
-감사 로그, 반복 일정, 진급 처리, 실시간 갱신.
+반복 일정, 진급 처리, 실시간 갱신, 주간/간트 보기.
 
 ## 업무 일정
 

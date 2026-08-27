@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -618,3 +618,57 @@ console.log(`   ${auditSeen.n === 0 ? '✅ 일반 담임은 변경 이력 못 �
 await asAuthed('admin')
 const adminSeen = await one(`select count(*)::int n from audit_log`)
 console.log(`   ✅ 관리자에게는 ${adminSeen.n}건 보임`)
+
+console.log('\n=== 20. 검색 · 캘린더 구독 (13) ===')
+// 검색 — 학생은 볼 수 있는 반만
+await asAuthed('hr1')
+const q1 = await db.query(`select kind, title, subtitle from search_school('${school}', '학생') order by kind, title limit 20`)
+console.log(`   3-1 담임 검색 '학생': ${q1.rows.filter(r=>r.kind==='student').length}명 (자기 반만)`)
+await asAuthed('hr2')
+const q2 = await db.query(`select kind, subtitle from search_school('${school}', '학생')`)
+const classes2 = [...new Set(q2.rows.filter(r=>r.kind==='student').map(r=>r.subtitle.split(' ')[0]))]
+console.log(`   3-2 담임에게 보이는 반: ${classes2.join(', ') || '없음'}`)
+await asAuthed('head')
+const q3 = await db.query(`select kind, subtitle from search_school('${school}', '학생')`)
+const classes3 = [...new Set(q3.rows.filter(r=>r.kind==='student').map(r=>r.subtitle.split(' ')[0]))]
+console.log(`   ✅ 부장에게 보이는 반: ${classes3.join(', ')} (학년 전체)`)
+const q4 = await db.query(`select kind, title from search_school('${school}', '수련')`)
+console.log(`   일정 검색 '수련': ${q4.rows.map(r=>`${r.kind}:${r.title}`).join(', ')}`)
+
+// 삭제한 일정은 검색에도 안 나와야 함
+await asUser('head')
+const { id: gone } = await one(`select create_event('${yearId}', '검색되면안됨', '2024-12-31'::date, null,
+  null, 'academic', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '') as id`)
+await db.exec(`select soft_delete_event('${gone}')`)
+await asAuthed('head')
+const q5 = await db.query(`select title from search_school('${school}', '검색되면안됨')`)
+console.log(`   ${q5.rows.length === 0 ? '✅ 삭제한 일정은 검색에 안 나옴' : '❌ 나옴'}`)
+
+// 캘린더 토큰
+await asAuthed('hr1')
+const tok = await one(`select my_calendar_token('${school}') as t`)
+const tok2 = await one(`select my_calendar_token('${school}') as t`)
+console.log(`   ${tok.t === tok2.t ? '✅ 같은 사람에게는 같은 토큰' : '❌ 매번 바뀜'}`)
+const reset = await one(`select my_calendar_token('${school}', true) as t`)
+console.log(`   ${reset.t !== tok.t ? '✅ 재발급하면 바뀜' : '❌ 안 바뀜'}`)
+
+// 피드는 '오늘 기준 최근 60일 이후'만 담습니다 — 미래 일정을 하나 만들어 확인합니다.
+await asUser('head')
+await db.exec(`select create_event('${yearId}', '피드확인용', (current_date + 5)::date, null,
+  null, 'academic', false, 2, 3, null, '강당', false,
+  '{}'::uuid[], array['${grade3}']::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '')`)
+
+// 토큰만으로 (로그인 없이)
+await db.exec(`reset role; set test.uid = ''`)
+const feed = await db.query(`select title, all_day, starts_at, mine from calendar_feed($1)`, [reset.t])
+console.log(`   ✅ 로그인 없이 토큰으로 ${feed.rows.length}건 조회`)
+const f0 = feed.rows.find(r=>r.title==='피드확인용')
+console.log(`   교시→시각 변환: ${f0 ? `${f0.title} ${f0.starts_at ?? '(종일)'}` : '없음'}`)
+const bad = await db.query(`select count(*)::int n from calendar_feed('없는토큰')`)
+console.log(`   ${bad.rows[0].n === 0 ? '✅ 잘못된 토큰은 빈 결과' : '❌ 새어 나옴'}`)
+const cols = await db.query(`select * from calendar_feed($1) limit 1`, [reset.t])
+const keys = Object.keys(cols.rows[0] ?? {})
+const leaked = keys.filter(k => /student|name|number|reason/i.test(k))
+console.log(`   ${leaked.length === 0 ? '✅ 피드에 학생 정보 없음' : '❌ 학생 정보 노출: '+leaked}`)
+console.log(`   피드 항목: ${keys.join(', ')}`)
