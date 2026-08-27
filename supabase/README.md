@@ -14,7 +14,8 @@ Supabase 대시보드 > **SQL Editor** 에서 순서대로 붙여넣고 Run:
 5. `05_teacher_access.sql` — 교사 일정 등록 + 반별 집계 공개
 6. `06_daily_participation.sql` — 날짜별 출석 + 담임/편집권 구분
 7. `07_task_assignees.sql` — 업무 일정에 담당자 지정
-8. `08_notices.sql` — 공지 (부장 · 관리자만 등록)
+8. `08_notices.sql` — 공지
+9. `09_messages.sql` — 쪽지 + 공지 권한을 부장으로 축소
 
 > 06 은 `participations` 의 기본키를 `(event_id, student_id)` 에서
 > `(event_id, student_id, on_date)` 로 넓힙니다. 기존 기록은 일정 시작일로
@@ -60,6 +61,8 @@ select create_event(
 | 비담임 (부서 소속만) | **없음** | X | O |
 
 일정 등록은 구성원 누구나 할 수 있고, **수정·삭제는 만든 사람**(과 부장·관리자)만 합니다.
+**공지는 부장만** 올립니다 — `can_post_notice()` 한 곳에서 정합니다.
+**쪽지는 보낸 사람과 받은 사람만** 봅니다. 부장도 관리자도 남의 쪽지는 못 봅니다.
 
 반별 참여 **집계(숫자)** 는 모든 교직원이 봅니다 — `event_classroom_status()`.
 **학생 이름**(`v_absentees` · `students` · `participations`)은 위 표대로 잠겨 있습니다.

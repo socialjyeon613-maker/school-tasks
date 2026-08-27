@@ -169,6 +169,7 @@ export async function getSchoolContext(
     homeroomClassroomIds,
     headGradeIds,
     isHead,
+    canPostNotice: isHead,
     // 일정 등록은 학교 구성원 누구나 (05_teacher_access.sql)
     canCreateEvent: true,
     isAdmin,

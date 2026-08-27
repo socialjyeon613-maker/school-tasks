@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
 import { ROLE_LABEL } from "@/lib/types";
 import RoleSwitcher from "./role-switcher";
@@ -17,11 +18,21 @@ export default async function SchoolLayout({
   // 소속이 아니면 RLS 가 아무 행도 주지 않습니다 → 존재하지 않는 것으로 처리
   if (!ctx) notFound();
 
+  const supabase = await createClient();
+  const { data: unread } = await supabase.rpc("unread_message_count", {
+    p_school: schoolId,
+  });
+
   const base = `/schools/${schoolId}`;
-  const nav = [
+  const nav: Array<{ href: string; label: string; badge?: number }> = [
     { href: `${base}/calendar`, label: "학사일정" },
     { href: `${base}/my`, label: "내 할 일" },
     ...(ctx.canCreateEvent ? [{ href: `${base}/tasks`, label: "업무 현황" }] : []),
+    {
+      href: `${base}/messages`,
+      label: "쪽지",
+      badge: typeof unread === "number" && unread > 0 ? unread : 0,
+    },
     ...(ctx.isAdmin ? [{ href: `${base}/admin`, label: "관리" }] : []),
   ];
 
@@ -39,9 +50,14 @@ export default async function SchoolLayout({
               <Link
                 key={n.href}
                 href={n.href}
-                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100"
+                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100"
               >
                 {n.label}
+                {(n.badge ?? 0) > 0 && (
+                  <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+                    {n.badge}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>

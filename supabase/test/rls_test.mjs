@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -409,3 +409,62 @@ await asAuthed('hr1')
 const grid = await one(`select count(*)::int n from v_events_by_date
   where academic_year_id='${yearId}' and event_id='${notice}'`)
 console.log(`   (참고) v_events_by_date 에는 ${grid.n}행 — 화면에서 event_type 으로 걸러냅니다`)
+
+console.log('\n=== 16. 공지 권한 축소 + 쪽지 (09) ===')
+// 관리자(교감)는 부장 보직이 없으므로 이제 공지를 못 올립니다
+await asUser('admin')
+try {
+  await db.exec(`select create_event('${yearId}', '교감공지', '2024-12-23'::date, '2024-12-24'::date,
+    null, 'notice', true, null, null, null, '', false,
+    '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '내용')`)
+  console.log('   ❌ 부장이 아닌 관리자가 공지를 올림')
+} catch (e) { console.log(`   ✅ 부장 아닌 사람은 공지 불가: ${e.message}`) }
+await asUser('head')
+await db.exec(`select create_event('${yearId}', '부장공지', '2024-12-23'::date, '2024-12-24'::date,
+  null, 'notice', true, null, null, null, '', false,
+  '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], null, false, '{}'::uuid[], '내용')`)
+console.log('   ✅ 부장은 공지 등록 가능')
+
+console.log('\n   -- 쪽지 --')
+await asAuthed('hr1')
+await db.query(`insert into messages (school_id, sender_id, recipient_id, body)
+                values ($1,$2,$3,$4)`, [school, U.hr1, U.hr2, '3-2반 학생 상담 건으로 연락드립니다'])
+await asAuthed('hr2')
+await db.query(`insert into messages (school_id, sender_id, recipient_id, body)
+                values ($1,$2,$3,$4)`, [school, U.hr2, U.hr1, '네 오후에 뵐게요'])
+console.log('   ✅ 담임끼리 쪽지 2건 주고받음')
+
+// 제3자는 남의 대화를 못 봄
+await asAuthed('head')
+const peek = await one(`select count(*)::int n from messages`)
+console.log(`   ${peek.n === 0 ? '✅ 부장도 남의 쪽지 못 봄' : '❌ 남의 쪽지가 보임 ('+peek.n+'건)'}`)
+await asAuthed('admin')
+const peek2 = await one(`select count(*)::int n from messages`)
+console.log(`   ${peek2.n === 0 ? '✅ 관리자도 남의 쪽지 못 봄' : '❌ 관리자에게 보임 ('+peek2.n+'건)'}`)
+
+// 당사자는 보임 + 안 읽은 수
+await asAuthed('hr1')
+const mine = await one(`select count(*)::int n from messages`)
+const unread = await one(`select unread_message_count('${school}') as n`)
+const conv = await db.query(`select other_name, last_body, unread from my_conversations('${school}')`)
+console.log(`   ✅ 당사자에게는 ${mine.n}건 / 안 읽음 ${unread.n}건`)
+console.log(`   대화 목록: ${conv.rows.map(r=>`${r.other_name}("${r.last_body}") 안읽음${r.unread}`).join(', ')}`)
+
+// 남을 사칭해 보내면?
+try {
+  await db.query(`insert into messages (school_id, sender_id, recipient_id, body) values ($1,$2,$3,$4)`,
+    [school, U.hr2, U.head, '사칭'])
+  console.log('   ❌ 남을 사칭해 보냄 (버그)')
+} catch { console.log('   ✅ 남을 사칭한 발송 차단') }
+
+// 외부인에게 보내면?
+try {
+  await db.query(`insert into messages (school_id, sender_id, recipient_id, body) values ($1,$2,$3,$4)`,
+    [school, U.hr1, U.outsider, '외부'])
+  console.log('   ❌ 외부인에게 보냄 (버그)')
+} catch { console.log('   ✅ 학교 밖 사람에게는 발송 차단') }
+
+// 읽음 처리
+await db.query(`select mark_messages_read($1,$2)`, [school, U.hr2])
+const after = await one(`select unread_message_count('${school}') as n`)
+console.log(`   ✅ 읽음 처리 후 안 읽음 ${after.n}건`)

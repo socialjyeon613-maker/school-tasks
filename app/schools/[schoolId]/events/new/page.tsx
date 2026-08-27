@@ -40,8 +40,8 @@ export default async function NewEventPage({
         categories={categories ?? []}
         periods={periods ?? []}
         members={members}
-        canPostNotice={ctx.isHead || ctx.isAdmin}
-        defaultKind={sp.kind === "notice" && (ctx.isHead || ctx.isAdmin) ? "notice" : "academic"}
+        canPostNotice={ctx.canPostNotice}
+        defaultKind={sp.kind === "notice" && ctx.canPostNotice ? "notice" : "academic"}
       />
     </main>
   );

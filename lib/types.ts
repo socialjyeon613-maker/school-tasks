@@ -211,6 +211,8 @@ export interface SchoolContext {
   /** 부장인 학년 */
   headGradeIds: string[];
   isHead: boolean;
+  /** 공지 작성 — 부장만 */
+  canPostNotice: boolean;
   /** 일정 등록 — 이제 학교 구성원 누구나 가능합니다 */
   canCreateEvent: boolean;
   isAdmin: boolean;

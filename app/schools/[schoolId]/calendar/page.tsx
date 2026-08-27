@@ -177,7 +177,7 @@ export default async function CalendarPage({
           schoolId={schoolId}
           notices={notices}
           today={toISODate(new Date())}
-          canPost={ctx.isHead || ctx.isAdmin}
+          canPost={ctx.canPostNotice}
         />
 
         <div className="min-w-0 flex-1">

@@ -101,7 +101,7 @@ export default async function EditEventPage({
         categories={categories ?? []}
         periods={periods ?? []}
         members={members}
-        canPostNotice={ctx.isHead || ctx.isAdmin}
+        canPostNotice={ctx.canPostNotice}
         initial={initial}
       />
     </main>

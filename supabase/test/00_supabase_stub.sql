@@ -35,3 +35,9 @@ create or replace function public.gen_random_bytes(n int) returns bytea
 language sql volatile as $fn$
   select decode(substring(repeat(md5(random()::text), (n / 16) + 2) from 1 for n * 2), 'hex');
 $fn$;
+
+-- 실제 Supabase 에서는 authenticated 가 auth.uid() 를 호출할 수 있습니다.
+-- security invoker 함수(my_conversations 등)가 이걸 쓰므로 같이 흉내냅니다.
+grant usage on schema auth to authenticated, anon;
+grant execute on function auth.uid() to authenticated, anon;
+grant select on auth.users to authenticated;
