@@ -55,12 +55,16 @@ export default function ParticipationGrid({
   const router = useRouter();
   const [marks, setMarks] = useState<Marks>(initial);
   const [dirty, setDirty] = useState(false);
-  // 날짜 탭을 옮기면 서버가 그 날짜의 기록을 새로 내려줍니다.
-  const [loadedDate, setLoadedDate] = useState(onDate);
-  if (loadedDate !== onDate) {
-    setLoadedDate(onDate);
-    setMarks(initial);
-    setDirty(false);
+
+  /*
+    서버가 새 데이터를 내려주면(날짜 탭 이동, 반 전환, 'N일 전체 참여' 후 refresh)
+    화면을 그것에 맞춥니다. 아직 저장하지 않은 편집이 있으면 덮어쓰지 않습니다.
+  */
+  const serverKey = `${onDate}|${classroomId}|${JSON.stringify(initial)}`;
+  const [loadedKey, setLoadedKey] = useState(serverKey);
+  if (loadedKey !== serverKey) {
+    setLoadedKey(serverKey);
+    if (!dirty) setMarks(initial);
   }
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
