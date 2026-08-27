@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
 import { firstOf, formatDate, periodLabel } from "@/lib/format";
 import { getSessionUser } from "@/lib/supabase/auth";
+import { canEditEvent } from "@/lib/permissions";
 import { categoryStyle } from "@/lib/types";
 import type {
   Absentees,
@@ -164,6 +165,8 @@ export default async function EventPage({
     if (c) homeroomBy.set(r.user_id, { name: c.name, gradeId: c.grade_id });
   }
 
+  const canEdit = canEditEvent(ctx, ev);
+
   const candidates = (memberRows ?? []).map((m) => {
     const p = firstOf(m.profile);
     const hr = homeroomBy.get(m.user_id);
@@ -209,9 +212,7 @@ export default async function EventPage({
 
         <div className="mt-2 flex flex-wrap items-start gap-3">
           <h1 className="text-xl font-bold">{ev.title}</h1>
-          {(ctx.canCreateEvent ||
-            ev.created_by === ctx.userId ||
-            ev.owner_id === ctx.userId) && (
+          {canEdit && (
             <Link
               href={`/schools/${schoolId}/events/${eventId}/edit`}
               className="no-print ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
@@ -376,7 +377,7 @@ export default async function EventPage({
       <Assignments
         eventId={eventId}
         meId={me?.id ?? ""}
-        canEdit={ctx.canCreateEvent}
+        canEdit={canEdit}
         dueAt={ev.due_at}
         candidates={candidates}
         grades={gradeRows ?? []}

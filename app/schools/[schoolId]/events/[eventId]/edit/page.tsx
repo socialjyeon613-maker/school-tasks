@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext, listMembers } from "@/lib/school";
+import { canEditEvent } from "@/lib/permissions";
 import EventForm, { type EventInitial } from "../../event-form";
 import type { SchoolEvent } from "@/lib/types";
 
@@ -27,11 +28,7 @@ export default async function EditEventPage({
 
   // 최종 판정은 RPC 안의 can_edit_event() 가 합니다.
   // 여기서는 권한 없는 사람에게 폼을 보여주지 않기 위한 화면단 검사입니다.
-  const canEdit =
-    ctx.canCreateEvent ||
-    ev.created_by === ctx.userId ||
-    ev.owner_id === ctx.userId;
-  if (!canEdit) redirect(`/schools/${schoolId}/events/${eventId}`);
+  if (!canEditEvent(ctx, ev)) redirect(`/schools/${schoolId}/events/${eventId}`);
 
   const [
     { data: grades },

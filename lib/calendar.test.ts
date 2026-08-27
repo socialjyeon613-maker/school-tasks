@@ -117,4 +117,61 @@ check("한 반", () => {
   assert.equal(compactClassLabel([2]), "2반");
 });
 
+
+/* ------------------------------------------------------------------
+   편집 권한 — DB의 can_edit_event() 와 같은 판정을 하는지
+------------------------------------------------------------------ */
+import { canEditEvent } from "./permissions";
+
+const ME = "me";
+const ctxOf = (o: Partial<{ isAdmin: boolean; isHead: boolean; canPostNotice: boolean }>) => ({
+  userId: ME,
+  isAdmin: false,
+  isHead: false,
+  canPostNotice: false,
+  ...o,
+});
+const evOf = (o: Partial<{ event_type: "academic" | "task" | "notice"; created_by: string | null; owner_id: string | null }>) => ({
+  event_type: "academic" as const,
+  created_by: "someone",
+  owner_id: "someone",
+  ...o,
+});
+
+console.log("\n편집 권한");
+
+check("작성자는 편집 가능", () => {
+  assert.equal(canEditEvent(ctxOf({}), evOf({ created_by: ME })), true);
+});
+check("담당자(owner)는 편집 가능", () => {
+  assert.equal(canEditEvent(ctxOf({}), evOf({ owner_id: ME })), true);
+});
+check("부장은 남의 일정도 편집 가능", () => {
+  assert.equal(canEditEvent(ctxOf({ isHead: true }), evOf({})), true);
+});
+check("관리자도 편집 가능", () => {
+  assert.equal(canEditEvent(ctxOf({ isAdmin: true }), evOf({})), true);
+});
+check("일반 교사는 남의 일정 편집 불가 ← 버튼이 보이면 안 됨", () => {
+  assert.equal(canEditEvent(ctxOf({}), evOf({})), false);
+});
+check("공지: 부장이면 편집 가능", () => {
+  assert.equal(
+    canEditEvent(ctxOf({ isHead: true, canPostNotice: true }), evOf({ event_type: "notice" })),
+    true
+  );
+});
+check("공지: 작성자라도 부장이 아니면 불가", () => {
+  assert.equal(
+    canEditEvent(ctxOf({}), evOf({ event_type: "notice", created_by: ME })),
+    false
+  );
+});
+check("공지: 관리자라도 부장이 아니면 불가", () => {
+  assert.equal(
+    canEditEvent(ctxOf({ isAdmin: true }), evOf({ event_type: "notice" })),
+    false
+  );
+});
+
 console.log(`\n${passed}개 통과\n`);
