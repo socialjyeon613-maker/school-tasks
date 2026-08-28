@@ -31,7 +31,14 @@ export default async function CalendarPage({
   const first = dates[0];
   const last = dates[dates.length - 1];
 
-  const [{ data: periods }, { data: grades }] = await Promise.all([
+  // 서로 기대지 않는 것은 함께 물어봅니다. 하나씩 기다리면 왕복이
+  // 그대로 쌓여 달력이 늦게 뜹니다.
+  const [
+    { data: periods },
+    { data: grades },
+    { data: rawEvents },
+    { data: noticeRows },
+  ] = await Promise.all([
     supabase
       .from("periods")
       .select("id, no, name")
@@ -42,29 +49,27 @@ export default async function CalendarPage({
       .select("id, grade_no, name")
       .eq("academic_year_id", ctx.year.id)
       .order("grade_no"),
+    supabase
+      .from("v_events_by_date")
+      .select("*")
+      .eq("academic_year_id", ctx.year.id)
+      .gte("on_date", first)
+      .lte("on_date", last)
+      .neq("status", "canceled"),
+    // 공지는 달력 격자에 넣지 않고 왼쪽 목록으로 뺍니다.
+    supabase
+      .from("events")
+      .select("id, title, description, start_date, end_date, author:profiles!events_created_by_fkey(name)")
+      .eq("academic_year_id", ctx.year.id)
+      .eq("event_type", "notice")
+      .neq("status", "canceled")
+      .lte("start_date", last)
+      .gte("end_date", first)
+      .order("start_date", { ascending: false }),
   ]);
 
   const maxPeriod = periods?.length ? Math.max(...periods.map((p) => p.no)) : 7;
   const gradeId = sp.grade ?? grades?.[0]?.id ?? "";
-
-  const { data: rawEvents } = await supabase
-    .from("v_events_by_date")
-    .select("*")
-    .eq("academic_year_id", ctx.year.id)
-    .gte("on_date", first)
-    .lte("on_date", last)
-    .neq("status", "canceled");
-
-  // 공지는 달력 격자에 넣지 않고 왼쪽 목록으로 뺍니다.
-  const { data: noticeRows } = await supabase
-    .from("events")
-    .select("id, title, description, start_date, end_date, author:profiles!events_created_by_fkey(name)")
-    .eq("academic_year_id", ctx.year.id)
-    .eq("event_type", "notice")
-    .neq("status", "canceled")
-    .lte("start_date", last)
-    .gte("end_date", first)
-    .order("start_date", { ascending: false });
 
   const notices: NoticeItem[] = (noticeRows ?? []).map((n) => ({
     id: n.id,
@@ -80,20 +85,19 @@ export default async function CalendarPage({
   );
   const eventIds = [...new Set(events.map((e) => e.event_id))];
 
-  const { data: targetRows } = eventIds.length
-    ? await supabase
-        .from("event_targets")
-        .select("event_id, grade_id, department_id, user_id, classroom:classrooms(class_no, grade_id)")
-        .in("event_id", eventIds)
-    : { data: [] };
-
-  // 업무 일정의 담당자 — 달력에서 선생님별 색으로 구분합니다.
-  const { data: assignRows } = eventIds.length
-    ? await supabase
-        .from("event_assignments")
-        .select("event_id, user_id, status, profile:profiles(name)")
-        .in("event_id", eventIds)
-    : { data: [] };
+  const [{ data: targetRows }, { data: assignRows }] = eventIds.length
+    ? await Promise.all([
+        supabase
+          .from("event_targets")
+          .select("event_id, grade_id, department_id, user_id, classroom:classrooms(class_no, grade_id)")
+          .in("event_id", eventIds),
+        // 업무 일정의 담당자 — 달력에서 선생님별 색으로 구분합니다.
+        supabase
+          .from("event_assignments")
+          .select("event_id, user_id, status, profile:profiles(name)")
+          .in("event_id", eventIds),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const assignees = new Map<string, Array<{ id: string; name: string; done: boolean }>>();
   for (const a of assignRows ?? []) {

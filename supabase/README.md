@@ -116,3 +116,12 @@ cd supabase/test && npm install && npm test
 
 > `test/00_supabase_stub.sql` 은 `auth.uid()` 등 Supabase 전용 객체를 흉내내는
 > **검증 전용** 파일입니다. 실제 프로젝트에는 실행하지 마세요.
+
+## 배포 지역
+
+Supabase 프로젝트는 서울에 있습니다 (한국에서 TCP 연결 12ms).
+Vercel 은 설정이 없으면 미국 동부(iad1)에서 돌기 때문에, 질의 한 번마다
+태평양을 왕복하게 됩니다. 그래서 `vercel.json` 에 `"regions": ["icn1"]`
+(서울) 을 못박아 두었습니다.
+
+Supabase 프로젝트를 다른 지역으로 옮기면 이 값도 함께 바꿔야 합니다.

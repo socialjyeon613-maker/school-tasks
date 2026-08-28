@@ -24,14 +24,22 @@ export default async function MyPage({
   const today = toISODate(new Date());
   const until = toISODate(new Date(Date.now() + 60 * 24 * 3600 * 1000));
 
-  const { data: raw } = await supabase
-    .from("v_events_by_date")
-    .select("*")
-    .eq("academic_year_id", ctx.year.id)
-    .gte("on_date", today)
-    .lte("on_date", until)
-    .neq("status", "canceled")
-    .order("on_date");
+  // 서로 기대지 않으니 함께 물어봅니다.
+  const [{ data: raw }, { data: myRows }] = await Promise.all([
+    supabase
+      .from("v_events_by_date")
+      .select("*")
+      .eq("academic_year_id", ctx.year.id)
+      .gte("on_date", today)
+      .lte("on_date", until)
+      .neq("status", "canceled")
+      .order("on_date"),
+    // 나에게 배정된 업무 — RLS 로는 학교 전체가 보이므로 내 것만 추립니다.
+    supabase
+      .from("event_assignments")
+      .select("event_id, status, submitted_at, event:events(id, title, due_at, status)")
+      .eq("user_id", ctx.userId),
+  ]);
 
   const events = (raw ?? []) as EventOnDate[];
 
@@ -47,32 +55,25 @@ export default async function MyPage({
   const mine = new Set<string>();
 
   if (ids.length) {
-    // is_my_event() 로 한 번에 거르기 위해 RPC 대신 대상 테이블을 읽습니다.
-    const { data: targets } = await supabase
-      .from("event_targets")
-      .select("event_id, grade_id, classroom_id, department_id, user_id")
-      .in("event_id", ids);
+    // 내 보직은 ctx 가 이미 들고 있습니다 — 다시 묻지 않습니다.
+    // (예전에는 staff_roles 를 또 읽었는데, user_id 조건이 빠지면 전 교직원의
+    //  보직을 긁어와 학교의 모든 일정이 '내 할 일'로 나옵니다.)
+    const myGrades = new Set(ctx.roles.map((r) => r.gradeId).filter(Boolean));
+    const myClasses = new Set(ctx.roles.map((r) => r.classroomId).filter(Boolean));
+    const myDepts = new Set(ctx.roles.map((r) => r.departmentId).filter(Boolean));
 
-    // user_id 조건이 빠지면 전 교직원의 보직을 긁어와
-    // 학교의 모든 일정이 '내 할 일'로 나옵니다. RLS 는 좁혀주지 않습니다.
-    const { data: roles } = await supabase
-      .from("staff_roles")
-      .select("grade_id, classroom_id, department_id")
-      .eq("academic_year_id", ctx.year.id)
-      .eq("user_id", ctx.userId);
-
-    const myGrades = new Set((roles ?? []).map((r) => r.grade_id).filter(Boolean));
-    const myClasses = new Set((roles ?? []).map((r) => r.classroom_id).filter(Boolean));
-    const myDepts = new Set((roles ?? []).map((r) => r.department_id).filter(Boolean));
-
-    // 내 반이 속한 학년도 내 것으로 봅니다.
-    if (myClasses.size) {
-      const { data: cls } = await supabase
-        .from("classrooms")
-        .select("grade_id")
-        .in("id", [...myClasses]);
-      for (const c of cls ?? []) myGrades.add(c.grade_id);
-    }
+    const [{ data: targets }, { data: cls }] = await Promise.all([
+      // is_my_event() 로 한 번에 거르기 위해 RPC 대신 대상 테이블을 읽습니다.
+      supabase
+        .from("event_targets")
+        .select("event_id, grade_id, classroom_id, department_id, user_id")
+        .in("event_id", ids),
+      // 내 반이 속한 학년도 내 것으로 봅니다.
+      myClasses.size
+        ? supabase.from("classrooms").select("grade_id").in("id", [...myClasses])
+        : Promise.resolve({ data: [] as Array<{ grade_id: string }> }),
+    ]);
+    for (const c of cls ?? []) myGrades.add(c.grade_id);
 
     const targeted = new Set((targets ?? []).map((t) => t.event_id));
     for (const id of ids) if (!targeted.has(id)) mine.add(id); // 대상 없음 = 전교
@@ -89,12 +90,6 @@ export default async function MyPage({
 
   const list = unique.filter((e) => mine.has(e.event_id));
   const needsInput = list.filter((e) => e.requires_participation);
-
-  // 나에게 배정된 업무 — RLS 로는 학교 전체가 보이므로 내 것만 추립니다.
-  const { data: myRows } = await supabase
-    .from("event_assignments")
-    .select("event_id, status, submitted_at, event:events(id, title, due_at, status)")
-    .eq("user_id", ctx.userId);
 
   const myTasks = (myRows ?? [])
     .map((r) => {

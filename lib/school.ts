@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/supabase/auth";
 import { firstOf } from "@/lib/format";
@@ -19,7 +20,7 @@ import {
  *   RLS 는 볼 수 있는 범위를 정할 뿐, 내 행만 골라주지 않습니다.
  *   반드시 user_id 로 좁혀야 합니다.
  */
-export async function listMySchools() {
+export const listMySchools = cache(async function listMySchools() {
   const supabase = await createClient();
   const user = await getSessionUser(supabase);
   if (!user) return [];
@@ -78,50 +79,57 @@ export async function listMySchools() {
     ...r,
     duties: dutiesBySchool.get(r.school.id) ?? [],
   }));
-}
+});
 
 /**
  * 학교 하나에 대한 현재 사용자의 맥락 — 신분, 담임 반, 부장 학년.
  * 권한의 최종 판정은 DB의 RLS 가 하고, 이 값은 화면을 그리기 위한 것입니다.
+ *
+ * ※ cache() 로 감싼 이유
+ *   레이아웃과 페이지가 각각 부릅니다. 감싸지 않으면 한 번 그릴 때
+ *   똑같은 질의가 두 벌 나갑니다. cache() 는 요청 하나 안에서만 살아 있어
+ *   사용자끼리 섞이지 않습니다.
  */
-export async function getSchoolContext(
+export const getSchoolContext = cache(async function getSchoolContext(
   schoolId: string
 ): Promise<SchoolContext | null> {
   const supabase = await createClient();
   const user = await getSessionUser(supabase);
   if (!user) return null;
 
-  const { data: year } = await supabase
-    .from("academic_years")
-    .select("id, school_id, year, name, is_current")
-    .eq("school_id", schoolId)
-    .eq("is_current", true)
-    .maybeSingle();
-  if (!year) return null;
+  // 학교는 학년도에 기대지 않으므로 함께 물어봅니다.
+  const [{ data: year }, { data: school }] = await Promise.all([
+    supabase
+      .from("academic_years")
+      .select("id, school_id, year, name, is_current")
+      .eq("school_id", schoolId)
+      .eq("is_current", true)
+      .maybeSingle(),
+    supabase
+      .from("schools")
+      .select("id, name, kind, allowed_domains")
+      .eq("id", schoolId)
+      .maybeSingle(),
+  ]);
+  if (!year || !school) return null;
 
-  const { data: school } = await supabase
-    .from("schools")
-    .select("id, name, kind, allowed_domains")
-    .eq("id", schoolId)
-    .maybeSingle();
-  if (!school) return null;
-
-  const { data: member } = await supabase
-    .from("school_members")
-    .select("role")
-    .eq("academic_year_id", year.id)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .maybeSingle();
+  const [{ data: member }, { data: roleRows }] = await Promise.all([
+    supabase
+      .from("school_members")
+      .select("role")
+      .eq("academic_year_id", year.id)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle(),
+    supabase
+      .from("staff_roles")
+      .select(
+        "id, role, grade_id, classroom_id, department_id, grade:grades(name), classroom:classrooms(name), department:departments(name)"
+      )
+      .eq("academic_year_id", year.id)
+      .eq("user_id", user.id),
+  ]);
   if (!member) return null;
-
-  const { data: roleRows } = await supabase
-    .from("staff_roles")
-    .select(
-      "id, role, grade_id, classroom_id, department_id, grade:grades(name), classroom:classrooms(name), department:departments(name)"
-    )
-    .eq("academic_year_id", year.id)
-    .eq("user_id", user.id);
 
   const roles: MyStaffRole[] = (roleRows ?? []).map((r) => {
     const kind = r.role as StaffRoleKind;
@@ -174,13 +182,13 @@ export async function getSchoolContext(
     canCreateEvent: true,
     isAdmin,
   };
-}
+});
 
 /**
  * 업무 담당자로 지정할 수 있는 교직원 목록 (현재 학년도 활성 구성원).
  * 이름 옆에 보직을 붙여 동명이인을 구분합니다.
  */
-export async function listMembers(schoolId: string, yearId: string) {
+export const listMembers = cache(async function listMembers(schoolId: string, yearId: string) {
   const supabase = await createClient();
 
   const [{ data: members }, { data: roles }] = await Promise.all([
@@ -221,4 +229,4 @@ export async function listMembers(schoolId: string, yearId: string) {
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
-}
+});

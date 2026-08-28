@@ -36,21 +36,23 @@ export default async function EventPage({
   const supabase = await createClient();
   const me = await getSessionUser(supabase);
 
-  const { data: event } = await supabase
-    .from("events")
-    .select("*, category:event_categories(name, color, lane)")
-    .eq("id", eventId)
-    .maybeSingle();
+  // 대상은 일정 행을 기다릴 필요가 없습니다 — eventId 만 있으면 됩니다.
+  const [{ data: event }, { data: targetRows }] = await Promise.all([
+    supabase
+      .from("events")
+      .select("*, category:event_categories(name, color, lane)")
+      .eq("id", eventId)
+      .maybeSingle(),
+    supabase
+      .from("event_targets")
+      .select("grade:grades(name), classroom:classrooms(name), department:departments(name), profile:profiles(name)")
+      .eq("event_id", eventId),
+  ]);
   if (!event) notFound();
 
   const ev = event as SchoolEvent & {
     category: { name: string; color: string; lane: string } | null;
   };
-
-  const { data: targetRows } = await supabase
-    .from("event_targets")
-    .select("grade:grades(name), classroom:classrooms(name), department:departments(name), profile:profiles(name)")
-    .eq("event_id", eventId);
 
   const targetNames = (targetRows ?? [])
     .map(
@@ -117,18 +119,19 @@ export default async function EventPage({
 
     const ids = [...new Set(students.map((x) => x.classroom_id))];
     if (ids.length) {
-      const { data: cls } = await supabase
-        .from("classrooms")
-        .select("id, name")
-        .in("id", ids)
-        .order("class_no");
+      const [{ data: cls }, { data: parts }] = await Promise.all([
+        supabase
+          .from("classrooms")
+          .select("id, name")
+          .in("id", ids)
+          .order("class_no"),
+        supabase
+          .from("participations")
+          .select("student_id, status, reason")
+          .eq("event_id", eventId)
+          .eq("on_date", onDate),
+      ]);
       classrooms = cls ?? [];
-
-      const { data: parts } = await supabase
-        .from("participations")
-        .select("student_id, status, reason")
-        .eq("event_id", eventId)
-        .eq("on_date", onDate);
       for (const p of parts ?? [])
         marks[p.student_id] = { status: p.status, reason: p.reason };
     }
