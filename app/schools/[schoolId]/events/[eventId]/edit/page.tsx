@@ -48,7 +48,8 @@ export default async function EditEventPage({
     supabase.from("event_attachments").select("file_path").eq("event_id", eventId).eq("kind", "file"),
   ]);
 
-  const [members, { data: assignees }, { data: stageRows }] = await Promise.all([
+  const [members, { data: assignees }, { data: stageRows }, { data: rosterRows }] =
+    await Promise.all([
     listMembers(schoolId, ctx.year.id),
     supabase.from("event_assignments").select("user_id").eq("event_id", eventId),
     // 이미 붙은 명단이 있으면 편집 화면에서도 단계를 고칠 수 있어야 합니다.
@@ -57,7 +58,9 @@ export default async function EditEventPage({
       .select("id, name, kind")
       .eq("event_id", eventId)
       .order("position"),
-  ]);
+    // 어느 단계에 학생이 남아 있는지 — 그 단계만 못 지웁니다
+    supabase.from("event_roster").select("stage_id").eq("event_id", eventId),
+    ]);
 
   const initial: EventInitial = {
     id: ev.id,
@@ -88,6 +91,9 @@ export default async function EditEventPage({
       name: st.name as string,
       kind: st.kind as "active" | "success" | "fail",
     })),
+    stagesInUse: (rosterRows ?? [])
+      .map((r) => r.stage_id as string | null)
+      .filter((id): id is string => Boolean(id)),
   };
 
   return (

@@ -43,6 +43,8 @@ export interface EventInitial {
   assigneeIds: string[];
   /** 이미 붙은 진행 명단 — 단계가 없으면 아직 안 쓰는 일정입니다 */
   stages: StageDraft[];
+  /** 학생이 남아 있는 단계 id — 이 단계는 지울 수 없습니다 */
+  stagesInUse: string[];
   rosterVisibility: "assignees" | "school";
 }
 
@@ -705,7 +707,7 @@ export default function EventForm({
           <StageList
             value={stages}
             onChange={setStages}
-            lockedIds={new Set(initial!.stages.map((st) => st.id!).filter(Boolean))}
+            lockedIds={new Set(initial!.stagesInUse)}
           />
           <p className="mt-2 text-xs text-slate-500">
             이름을 고쳐도 그 단계에 있던 학생은 그대로 남습니다. 학생이 있는 단계는
