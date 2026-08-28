@@ -175,6 +175,25 @@ export default function EventForm({
   const [error, setError] = useState("");
   // 일정은 만들어졌는데 명단 설정만 실패한 경우 — 다시 등록하면 중복이 생깁니다
   const [createdId, setCreatedId] = useState("");
+  /*
+    흔한 일정은 '이름 · 날짜 · 교시' 로 끝납니다. 기간 · 시각 · 장소까지
+    늘 펼쳐 두면 칸이 열한 개라 처음 보는 사람이 주눅 듭니다. 접어 두되,
+    고칠 때 값이 들어 있으면 자동으로 펴서 사라진 것처럼 보이지 않게 합니다.
+  */
+  /*
+    펼침 여부는 '화면에 실제로 값이 보이는가' 로 판단합니다.
+      - end_date 는 not null 이라 하루짜리도 시작일과 같은 값이 들어갑니다.
+        그대로 보면 모든 일정이 늘 펼쳐집니다. 여러 날일 때만 셉니다.
+      - 집합 시각은 학사일정에만 그리므로, 업무에서는 값이 남아 있어도
+        보이지 않아 세지 않습니다.
+  */
+  const [showExtra, setShowExtra] = useState(
+    Boolean(
+      (initial && initial.endDate !== initial.startDate) ||
+        initial?.location ||
+        (initial?.eventType === "academic" && initial?.startTime)
+    )
+  );
 
   const isTask = eventType === "task";
   const isNotice = eventType === "notice";
@@ -410,16 +429,29 @@ export default function EventForm({
             className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
           />
         </Field>
-        <Field label={isNotice ? "게시 종료일" : "종료일 (기간 일정만)"}>
-          <input
-            type="date"
-            value={endDate}
-            min={startDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
-          />
-        </Field>
+        {/* 공지는 언제까지 붙일지가 핵심이라 늘 내놓습니다 */}
+        {(isNotice || showExtra) && (
+          <Field label={isNotice ? "게시 종료일" : "종료일 (기간 일정만)"}>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-slate-900"
+            />
+          </Field>
+        )}
       </div>
+
+      {!isNotice && !showExtra && (
+        <button
+          type="button"
+          onClick={() => setShowExtra(true)}
+          className="text-sm text-slate-500 hover:text-slate-900"
+        >
+          ＋ 기간 · {isPlain ? "집합 시각 · 장소" : "비고"}
+        </button>
+      )}
 
       {isPlain && (
       <Field label="교시">
@@ -466,7 +498,11 @@ export default function EventForm({
       </Field>
       )}
 
-      <div className={`grid gap-4 ${isPlain ? "sm:grid-cols-2" : ""}`}>
+      <div
+        className={`grid gap-4 ${isPlain ? "sm:grid-cols-2" : ""} ${
+          isNotice || showExtra ? "" : "hidden"
+        }`}
+      >
         {isPlain && (
         <Field label="집합 시각 (선택)">
           <input

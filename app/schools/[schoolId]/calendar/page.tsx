@@ -6,6 +6,7 @@ import { compactClassLabel, firstOf, monthDates, teacherColor, toISODate, weekda
 import { buildTargetIndex, matchesGrade, packRows, rowCells } from "@/lib/calendar";
 import { categoryStyle, type EventOnDate } from "@/lib/types";
 import MonthNav from "./month-nav";
+import PrintButton from "../print-button";
 import ViewSwitch from "../view-switch";
 import NoticeList, { type NoticeItem } from "./notice-list";
 
@@ -142,10 +143,17 @@ export default async function CalendarPage({
 
   return (
     <main className="mx-auto max-w-[1400px] px-4 py-6">
-      <div className="no-print mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-bold">
-          {y}년 {m}월 {gradeName} 학사일정
-        </h1>
+      {/*
+        도구줄은 인쇄에서 빠지므로 종이용 제목을 따로 둡니다.
+        화면의 제목(MonthNav 안)이 h1 이라 여기서는 문단으로 둡니다 —
+        h1 이 둘이면 읽어 주는 프로그램이 헷갈립니다.
+      */}
+      <p className="print-only mb-2 text-center text-base font-bold">
+        {y}년 {m}월 {gradeName} 학사일정
+      </p>
+
+      <div className="no-print mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <MonthNav year={y} month={m} gradeId={gradeId} />
 
         <ViewSwitch schoolId={schoolId} current="month" query={`grade=${gradeId}`} />
 
@@ -165,9 +173,9 @@ export default async function CalendarPage({
           ))}
         </div>
 
-        <MonthNav year={y} month={m} gradeId={gradeId} />
-
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
+          {/* 인쇄는 가끔 쓰니 조용히 둡니다 — 등록과 같은 무게로 보이면 안 됩니다 */}
+          <PrintButton />
           {ctx.canCreateEvent && (
             <Link
               href={`/schools/${schoolId}/events/new?date=${first}&grade=${gradeId}`}

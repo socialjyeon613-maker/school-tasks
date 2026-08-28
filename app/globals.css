@@ -19,9 +19,17 @@ body {
 }
 
 /* 일정표는 결국 인쇄해서 붙입니다. 화면 조작 요소는 인쇄에서 뺍니다. */
+.print-only {
+  display: none;
+}
+
 @media print {
   .no-print {
     display: none !important;
+  }
+  /* 도구줄을 통째로 감추면 종이에 몇 월인지가 남지 않습니다. */
+  .print-only {
+    display: block;
   }
   .print-tight {
     font-size: 10px;

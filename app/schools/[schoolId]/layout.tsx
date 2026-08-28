@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSchoolContext } from "@/lib/school";
 import { ROLE_LABEL } from "@/lib/types";
 import RoleSwitcher from "./role-switcher";
+import SchoolNav, { type NavItem } from "./school-nav";
 
 export default async function SchoolLayout({
   children,
@@ -25,10 +26,11 @@ export default async function SchoolLayout({
   ]);
 
   const base = `/schools/${schoolId}`;
-  const nav: Array<{ href: string; label: string; badge?: number }> = [
+
+  // 늘 쓰는 것만 내놓습니다.
+  // 주간 · 간트는 학사일정 안의 토글에 이미 있어 여기서는 뺐습니다.
+  const nav: NavItem[] = [
     { href: `${base}/calendar`, label: "학사일정" },
-    { href: `${base}/week`, label: "주간" },
-    { href: `${base}/timeline`, label: "간트" },
     { href: `${base}/my`, label: "내 할 일" },
     ...(ctx.canCreateEvent ? [{ href: `${base}/tasks`, label: "업무 현황" }] : []),
     {
@@ -36,6 +38,10 @@ export default async function SchoolLayout({
       label: "쪽지",
       badge: typeof unreadMsg === "number" && unreadMsg > 0 ? unreadMsg : 0,
     },
+  ];
+
+  // 어쩌다 한 번 쓰는 것 — ⋯ 안으로
+  const more: NavItem[] = [
     ...(ctx.isAdmin ? [{ href: `${base}/admin`, label: "관리" }] : []),
     { href: "/help", label: "도움말" },
   ];
@@ -77,35 +83,25 @@ export default async function SchoolLayout({
                 </span>
               )}
             </Link>
-            {ctx.roles.length > 1 && ctx.activeRole && (
+            {/*
+              보직이 여럿이면 전환기가 지금 보직을 이미 보여 줍니다.
+              그 옆에 신분 딱지를 또 붙이면 뱃지가 둘이 되어 어수선합니다.
+            */}
+            {ctx.roles.length > 1 && ctx.activeRole ? (
               <RoleSwitcher
                 schoolId={schoolId}
                 roles={ctx.roles}
                 activeRoleId={ctx.activeRole.id}
               />
+            ) : (
+              <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 sm:inline">
+                {ctx.roles[0]?.label ?? ROLE_LABEL[ctx.role]}
+              </span>
             )}
-            <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 sm:inline">
-              {ctx.roles.length === 1 ? ctx.roles[0].label : ROLE_LABEL[ctx.role]}
-            </span>
             </div>
           </div>
 
-          <nav className="-mx-4 mt-1.5 flex gap-1 overflow-x-auto px-4 pb-0.5 lg:mx-0 lg:mt-0 lg:overflow-visible lg:px-0">
-            {nav.map((n) => (
-              <Link
-                key={n.href}
-                href={n.href}
-                className="flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100"
-              >
-                {n.label}
-                {(n.badge ?? 0) > 0 && (
-                  <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
-                    {n.badge}
-                  </span>
-                )}
-              </Link>
-            ))}
-          </nav>
+          <SchoolNav items={nav} more={more} />
         </div>
       </header>
 

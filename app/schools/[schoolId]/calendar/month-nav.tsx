@@ -2,6 +2,10 @@
 
 import Link from "next/link";
 
+/**
+ * 달 넘기기 — 화살표 사이에 달을 둡니다.
+ * 앞뒤 화살표가 떨어져 있으면 무엇을 넘기는 것인지 한눈에 안 잡힙니다.
+ */
 export default function MonthNav({
   year,
   month,
@@ -19,22 +23,21 @@ export default function MonthNav({
     <div className="flex items-center gap-1">
       <Link
         href={link(prev.y, prev.m)}
-        className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+        aria-label="지난달"
+        className="rounded-lg px-2 py-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
       >
         ←
       </Link>
+      <h1 className="min-w-[7.5rem] text-center text-lg font-bold">
+        {year}년 {month}월
+      </h1>
       <Link
         href={link(next.y, next.m)}
-        className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm"
+        aria-label="다음달"
+        className="rounded-lg px-2 py-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
       >
         →
       </Link>
-      <button
-        onClick={() => window.print()}
-        className="ml-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-      >
-        인쇄
-      </button>
     </div>
   );
 }
