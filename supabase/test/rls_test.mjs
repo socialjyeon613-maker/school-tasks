@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`, `${SUP}/16_roster_setup.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`, `${SUP}/16_roster_setup.sql`, `${SUP}/17_roster_edit.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -834,4 +834,78 @@ const after2 = await one(`select count(*)::int n from event_roster where event_i
 const order2 = await db.query(`select name from event_stages where event_id='${t2}' order by position`)
 console.log(`   순서 변경 → ${order2.rows.map(r=>r.name).join(' → ')}`)
 console.log(`   ${before2.n === after2.n ? '✅ 학생 단계 유지됨' : '❌ 단계가 날아감'} (${before2.n}→${after2.n})`)
+}
+
+{
+console.log('')
+console.log('=== 24. 단계 고치기 · 메모 (17) ===')
+await asUser('hr1')
+const { id: t3 } = await one(`select create_event('${yearId}', '2027 예술고 지원', '2026-12-08'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '') as id`)
+const sids = (await db.query(`select student_id from search_students_for_roster($1,'학생',null) limit 3`, [school])).rows.map(r=>r.student_id)
+await db.query(`select setup_roster($1, $2::jsonb, null, $3::uuid[])`,
+  [t3, JSON.stringify([{name:'준비',kind:'active'},{name:'접수',kind:'active'},{name:'합격',kind:'success'}]), sids])
+
+const st0 = await db.query(`select id, name, kind from event_stages where event_id='${t3}' order by position`)
+// 두 번째 학생을 '접수' 로 옮겨 둡니다
+await db.query(`select set_roster_stage($1, $2::uuid[], $3, null)`, [t3, [sids[1]], st0.rows[1].id])
+
+// ── 이름 바꾸기: 학생이 붙어 있어도 살아남아야 합니다
+const rows = st0.rows.map(r => ({ id: r.id, name: r.name, kind: r.kind }))
+rows[1].name = '원서접수'
+await db.query(`select update_event_stages($1, $2::jsonb)`, [t3, JSON.stringify(rows)])
+const after = await db.query(
+  `select s.name, count(t.student_id)::int n from event_stages s
+   left join event_roster t on t.stage_id = s.id
+   where s.event_id='${t3}' group by s.id, s.name, s.position order by s.position`)
+console.log(`   이름 바꾼 뒤: ${after.rows.map(r=>`${r.name}(${r.n})`).join(' → ')}`)
+const kept = after.rows.find(r => r.name === '원서접수')
+console.log(`   ${kept && kept.n === 1 ? '✅ 이름을 고쳐도 학생이 그대로' : '❌ 학생이 떨어져 나감'}`)
+const orphan = await one(`select count(*)::int n from event_roster where event_id='${t3}' and stage_id is null`)
+console.log(`   ${orphan.n === 0 ? '✅ 단계 잃은 학생 없음' : `❌ 단계 없는 학생 ${orphan.n}명`}`)
+
+// ── 순서 바꾸기 + 단계 추가
+const rows2 = [rows[1], rows[0], rows[2], { id: null, name: '면접', kind: 'active' }]
+await db.query(`select update_event_stages($1, $2::jsonb)`, [t3, JSON.stringify(rows2)])
+const ord = await db.query(`select name from event_stages where event_id='${t3}' order by position`)
+console.log(`   순서 · 추가: ${ord.rows.map(r=>r.name).join(' → ')}`)
+console.log(`   ${ord.rows.length===4 && ord.rows[3].name==='면접' ? '✅ 새 단계가 살아남음' : '❌ 새로 넣은 단계가 사라짐'}`)
+
+// ── 학생이 있는 단계는 못 지웁니다
+try {
+  await db.query(`select update_event_stages($1, $2::jsonb)`,
+    [t3, JSON.stringify(rows2.filter(r => r.name !== '원서접수'))])
+  console.log('   ❌ 학생 있는 단계가 지워짐')
+} catch (e) { console.log(`   ✅ 학생 있는 단계는 못 지움: ${e.message.split(String.fromCharCode(10))[0]}`) }
+
+// ── 빈 단계는 지워집니다
+await db.query(`select update_event_stages($1, $2::jsonb)`,
+  [t3, JSON.stringify(rows2.filter(r => r.name !== '면접'))])
+const ord2 = await db.query(`select name from event_stages where event_id='${t3}' order by position`)
+console.log(`   빈 단계 삭제: ${ord2.rows.map(r=>r.name).join(' → ')} ${ord2.rows.length===3?'✅':'❌'}`)
+
+// ── 단계를 다 지우려 하면 거절
+try {
+  await db.query(`select update_event_stages($1,'[]'::jsonb)`, [t3])
+  console.log('   ❌ 단계를 전부 지움')
+} catch (e) { console.log(`   ✅ 단계 전부 삭제 거절: ${e.message}`) }
+
+// ── 메모
+await db.query(`select set_roster_note($1,$2,'  어머니 상담 완료  ')`, [t3, sids[0]])
+const note = await one(`select note from event_roster where event_id='${t3}' and student_id='${sids[0]}'`)
+console.log(`   메모: "${note.note}" ${note.note==='어머니 상담 완료'?'✅ 앞뒤 공백 정리됨':'❌'}`)
+const listed = await db.query(`select note from event_roster_list($1) where student_id=$2`, [t3, sids[0]])
+console.log(`   ${listed.rows[0]?.note==='어머니 상담 완료'?'✅ 명단 조회에도 나옴':'❌ 명단에 안 나옴'}`)
+
+// ── 남이 못 고칩니다
+await asUser('nonhr')
+try {
+  await db.query(`select set_roster_note($1,$2,'몰래')`, [t3, sids[0]])
+  console.log('   ❌ 남이 메모를 고침')
+} catch (e) { console.log(`   ✅ 담당자 아니면 메모 불가: ${e.message}`) }
+try {
+  await db.query(`select update_event_stages($1,$2::jsonb)`, [t3, JSON.stringify(rows)])
+  console.log('   ❌ 남이 단계를 고침')
+} catch (e) { console.log(`   ✅ 담당자 아니면 단계 수정 불가: ${e.message}`) }
 }

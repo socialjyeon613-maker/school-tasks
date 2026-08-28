@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import StageList, { type StageDraft } from "./stage-list";
 
-export interface StageDraft {
-  name: string;
-  kind: "active" | "success" | "fail";
-}
+export type { StageDraft };
 
 export interface StudentPick {
   id: string;
@@ -20,51 +18,6 @@ export interface RosterDraft {
   visibility: "assignees" | "school";
   students: StudentPick[];
 }
-
-/** 해마다 반복되는 단계 묶음 — 고른 뒤 이름을 고쳐 쓰면 됩니다 */
-const PRESETS: Array<{ label: string; stages: StageDraft[] }> = [
-  {
-    label: "고입 진학",
-    stages: [
-      { name: "준비", kind: "active" },
-      { name: "서류제출", kind: "active" },
-      { name: "1차합격", kind: "active" },
-      { name: "면접", kind: "active" },
-      { name: "최종합격", kind: "success" },
-      { name: "불합격", kind: "fail" },
-    ],
-  },
-  {
-    label: "대회 출전",
-    stages: [
-      { name: "신청", kind: "active" },
-      { name: "예선", kind: "active" },
-      { name: "본선", kind: "active" },
-      { name: "수상", kind: "success" },
-      { name: "미수상", kind: "fail" },
-    ],
-  },
-  {
-    label: "제출물 관리",
-    stages: [
-      { name: "미제출", kind: "active" },
-      { name: "제출", kind: "success" },
-      { name: "면제", kind: "fail" },
-    ],
-  },
-];
-
-const KIND_LABEL: Record<StageDraft["kind"], string> = {
-  active: "진행",
-  success: "성공",
-  fail: "실패",
-};
-
-const KIND_STYLE: Record<string, string> = {
-  active: "bg-sky-100 text-sky-800 border-sky-300",
-  success: "bg-emerald-100 text-emerald-800 border-emerald-300",
-  fail: "bg-rose-100 text-rose-800 border-rose-300",
-};
 
 export default function RosterSetup({
   schoolId,
@@ -84,21 +37,6 @@ export default function RosterSetup({
   const [error, setError] = useState("");
 
   const set = (patch: Partial<RosterDraft>) => onChange({ ...value, ...patch });
-
-  const setStage = (i: number, patch: Partial<StageDraft>) =>
-    set({ stages: value.stages.map((s, n) => (n === i ? { ...s, ...patch } : s)) });
-
-  const removeStage = (i: number) =>
-    set({ stages: value.stages.filter((_, n) => n !== i) });
-
-  /** 위/아래 단추로 순서를 바꿉니다 — 폰에서 끌어 옮기는 것보다 정확합니다 */
-  function moveStage(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= value.stages.length) return;
-    const next = [...value.stages];
-    [next[i], next[j]] = [next[j], next[i]];
-    set({ stages: next });
-  }
 
   async function search(text: string) {
     setQ(text);
@@ -138,109 +76,9 @@ export default function RosterSetup({
     );
   }
 
-  const emptyStage = value.stages.some((s) => !s.name.trim());
-  const dupStage =
-    new Set(value.stages.map((s) => s.name.trim())).size !== value.stages.length;
-
   return (
     <div className="space-y-4 rounded-lg border border-slate-300 bg-white p-4">
-      {/* ── 단계 ─────────────────────────────────────────── */}
-      <div>
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium">단계</p>
-          <span className="text-xs text-slate-500">
-            위에서 아래 순서로 진행됩니다
-          </span>
-          <div className="ml-auto flex flex-wrap gap-1">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => set({ stages: p.stages.map((s) => ({ ...s })) })}
-                className="rounded border border-slate-300 px-2 py-1 text-xs"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <ul className="space-y-1.5">
-          {value.stages.map((s, i) => (
-            <li key={i} className="flex items-center gap-1.5">
-              <span className="w-5 shrink-0 text-center text-xs text-slate-400">
-                {i + 1}
-              </span>
-              <input
-                value={s.name}
-                onChange={(e) => setStage(i, { name: e.target.value })}
-                placeholder="단계 이름"
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-slate-900"
-              />
-              <select
-                value={s.kind}
-                onChange={(e) =>
-                  setStage(i, { kind: e.target.value as StageDraft["kind"] })
-                }
-                className={`shrink-0 rounded-lg border px-2 py-1.5 text-xs ${KIND_STYLE[s.kind]}`}
-                title="성공 · 실패는 마무리 단계입니다"
-              >
-                {(["active", "success", "fail"] as const).map((k) => (
-                  <option key={k} value={k}>
-                    {KIND_LABEL[k]}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => moveStage(i, -1)}
-                disabled={i === 0}
-                aria-label="위로"
-                className="shrink-0 rounded border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-30"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                onClick={() => moveStage(i, 1)}
-                disabled={i === value.stages.length - 1}
-                aria-label="아래로"
-                className="shrink-0 rounded border border-slate-300 px-1.5 py-1 text-xs disabled:opacity-30"
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                onClick={() => removeStage(i)}
-                aria-label="삭제"
-                className="shrink-0 rounded px-1.5 py-1 text-xs text-slate-400 hover:text-rose-600"
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <button
-          type="button"
-          onClick={() => set({ stages: [...value.stages, { name: "", kind: "active" }] })}
-          className="mt-2 text-sm text-slate-500 hover:text-slate-900"
-        >
-          + 단계 추가
-        </button>
-
-        {value.stages.length > 0 && (
-          <p className="mt-2 text-xs text-slate-500">
-            {value.stages.map((s) => s.name.trim() || "…").join(" → ")}
-          </p>
-        )}
-        {emptyStage && (
-          <p className="mt-1 text-xs text-rose-700">이름이 빈 단계가 있습니다.</p>
-        )}
-        {dupStage && (
-          <p className="mt-1 text-xs text-rose-700">같은 이름의 단계가 있습니다.</p>
-        )}
-      </div>
+      <StageList value={value.stages} onChange={(stages) => set({ stages })} />
 
       {/* ── 공개 범위 ────────────────────────────────────── */}
       <div>

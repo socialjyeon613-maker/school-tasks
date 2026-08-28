@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDateTime } from "@/lib/format";
+import StageList, { stageProblem, type StageDraft } from "../stage-list";
 
 export interface Stage {
   stage_id: string;
@@ -62,6 +63,18 @@ const KIND_STYLE: Record<string, string> = {
   fail: "bg-rose-100 text-rose-800 border-rose-300",
 };
 
+/** DB 가 올린 표시를 사람 말로 옮깁니다 */
+function readable(msg: string) {
+  const stuck = msg.match(/STAGE_IN_USE:(.+?):(\d+)/);
+  if (stuck) {
+    return `‘${stuck[1]}’ 단계에 학생 ${stuck[2]}명이 남아 있어 지울 수 없습니다. 먼저 다른 단계로 옮기세요.`;
+  }
+  if (msg.includes("NO_STAGES")) return "단계를 하나도 남기지 않을 수는 없습니다.";
+  if (msg.includes("EMPTY_NAME")) return "이름이 빈 단계가 있습니다.";
+  if (msg.includes("FORBIDDEN")) return "권한이 없습니다.";
+  return "처리하지 못했습니다. " + msg;
+}
+
 export default function RosterBoard({
   eventId,
   schoolId,
@@ -87,6 +100,10 @@ export default function RosterBoard({
   const [q, setQ] = useState("");
   const [found, setFound] = useState<Candidate[]>([]);
   const [, startTransition] = useTransition();
+  // 단계 고치기 — 열면 지금 단계를 그대로 담아 시작합니다
+  const [editing, setEditing] = useState<StageDraft[] | null>(null);
+  // 메모는 칸을 떠날 때 저장합니다. 한 글자마다 부르면 너무 잦습니다.
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   const total = rows.length;
   const done = rows.filter((r) => r.stage_kind !== "active" && r.stage_kind).length;
@@ -98,11 +115,7 @@ export default function RosterBoard({
     const { error } = await fn();
     setBusy(false);
     if (error) {
-      setError(
-        error.message.includes("FORBIDDEN")
-          ? "권한이 없습니다."
-          : "처리하지 못했습니다. " + error.message
-      );
+      setError(readable(error.message));
       return false;
     }
     setPicked([]);
@@ -119,6 +132,40 @@ export default function RosterBoard({
         p_note: null,
       })
     );
+
+  /** 학생이 남아 있는 단계는 지울 수 없습니다 — × 를 미리 막아 둡니다 */
+  const stagesInUse = new Set(
+    rows.map((r) => r.stage_id).filter((id): id is string => Boolean(id))
+  );
+
+  async function saveStages() {
+    if (!editing) return;
+    if (stageProblem(editing)) return setError(stageProblem(editing));
+
+    const ok = await run(() =>
+      createClient().rpc("update_event_stages", {
+        p_event: eventId,
+        p_stages: editing.map((st) => ({
+          id: st.id ?? null,
+          name: st.name.trim(),
+          kind: st.kind,
+        })),
+      })
+    );
+    if (ok) setEditing(null);
+  }
+
+  async function saveNote(studentId: string, next: string) {
+    const before = rows.find((r) => r.student_id === studentId)?.note ?? "";
+    if (next.trim() === before.trim()) return;
+    await run(() =>
+      createClient().rpc("set_roster_note", {
+        p_event: eventId,
+        p_student: studentId,
+        p_note: next,
+      })
+    );
+  }
 
   const remove = () =>
     run(() =>
@@ -264,6 +311,39 @@ export default function RosterBoard({
           : "담당자 · 부장 · 관리자만 명단 전체를 봅니다. 담임에게는 자기 반 학생만 보입니다."}
       </p>
 
+      {/* 단계 고치기 */}
+      {editing ? (
+        <div className="mb-4 rounded-lg border border-slate-300 bg-slate-50 p-4">
+          <StageList
+            value={editing}
+            onChange={setEditing}
+            lockedIds={stagesInUse}
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            이름을 고쳐도 그 단계에 있던 학생은 그대로 남습니다. 학생이 있는 단계는
+            지울 수 없으니, 먼저 다른 단계로 옮기세요.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={() => {
+                setEditing(null);
+                setError("");
+              }}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium"
+            >
+              취소
+            </button>
+            <button
+              onClick={saveStages}
+              disabled={busy || Boolean(stageProblem(editing))}
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {busy ? "저장 중…" : "단계 저장"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* 파이프라인 요약 */}
       <ol className="mb-4 flex flex-wrap items-center gap-1">
         {stages.map((s, i) => (
@@ -283,6 +363,24 @@ export default function RosterBoard({
             {i < stages.length - 1 && <span className="text-slate-300">›</span>}
           </li>
         ))}
+        {canManage && !editing && (
+          <li className="ml-2">
+            <button
+              onClick={() =>
+                setEditing(
+                  stages.map((st) => ({
+                    id: st.stage_id,
+                    name: st.stage_name,
+                    kind: st.stage_kind,
+                  }))
+                )
+              }
+              className="rounded-lg px-2 py-1.5 text-sm text-slate-500 hover:text-slate-900"
+            >
+              단계 고치기
+            </button>
+          </li>
+        )}
       </ol>
 
       {picked.length > 0 && canManage && (
@@ -385,8 +483,27 @@ export default function RosterBoard({
                   <td className="border border-slate-200 px-3 py-1.5 text-xs text-slate-400">
                     {formatDateTime(r.updated_at)}
                   </td>
-                  <td className="border border-slate-200 px-3 py-1.5 text-xs text-slate-600">
-                    {r.note}
+                  <td className="border border-slate-200 px-1 py-1">
+                    {canManage ? (
+                      <input
+                        value={notes[r.student_id] ?? r.note}
+                        onChange={(e) =>
+                          setNotes((n) => ({ ...n, [r.student_id]: e.target.value }))
+                        }
+                        onBlur={(e) => saveNote(r.student_id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") {
+                            setNotes((n) => ({ ...n, [r.student_id]: r.note }));
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        placeholder="—"
+                        className="w-full rounded border border-transparent px-2 py-1 text-xs outline-none hover:border-slate-200 focus:border-slate-900"
+                      />
+                    ) : (
+                      <span className="block px-2 py-1 text-xs text-slate-600">{r.note}</span>
+                    )}
                   </td>
                 </tr>
               ))}

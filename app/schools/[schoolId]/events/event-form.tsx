@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { compactClassLabel, teacherColor } from "@/lib/format";
 import { categoryStyle } from "@/lib/types";
 import RosterSetup, { type RosterDraft } from "./roster-setup";
+import StageList, { stageProblem, type StageDraft } from "./stage-list";
 
 interface Grade { id: string; grade_no: number; name: string }
 interface Classroom { id: string; grade_id: string; class_no: number; name: string }
@@ -40,6 +41,22 @@ export interface EventInitial {
   participationCount: number;
   attachmentPaths: string[];
   assigneeIds: string[];
+  /** 이미 붙은 진행 명단 — 단계가 없으면 아직 안 쓰는 일정입니다 */
+  stages: StageDraft[];
+  rosterVisibility: "assignees" | "school";
+}
+
+/** 명단 쪽 DB 표시를 사람 말로 */
+function rosterMessage(msg: string) {
+  const stuck = msg.match(/STAGE_IN_USE:(.+?):(\d+)/);
+  if (stuck) {
+    return `‘${stuck[1]}’ 단계에 학생 ${stuck[2]}명이 남아 있어 지울 수 없습니다. 명단 화면에서 먼저 옮기세요.`;
+  }
+  if (msg.includes("NO_STAGES")) return "단계를 하나도 남기지 않을 수는 없습니다.";
+  if (msg.includes("VISIBILITY_FORBIDDEN"))
+    return "공개 범위를 전 교직원으로 넓히는 것은 부장 · 관리자만 할 수 있습니다.";
+  if (msg.includes("FORBIDDEN")) return "진행 명단을 고칠 권한이 없습니다.";
+  return "진행 명단을 저장하지 못했습니다. " + msg;
 }
 
 export default function EventForm({
@@ -108,6 +125,12 @@ export default function EventForm({
     initial?.assigneeIds ?? []
   );
   const [useRoster, setUseRoster] = useState(false);
+  // 이미 명단이 붙어 있으면 단계와 공개 범위를 여기서 고칩니다.
+  const hasRoster = isEdit && initial!.stages.length > 0;
+  const [stages, setStages] = useState<StageDraft[]>(initial?.stages ?? []);
+  const [rosterVis, setRosterVis] = useState<"assignees" | "school">(
+    initial?.rosterVisibility ?? "assignees"
+  );
   const [roster, setRoster] = useState<RosterDraft>({
     stages: [],
     visibility: "assignees",
@@ -188,6 +211,10 @@ export default function EventForm({
       setError("대상 반을 하나 이상 선택하세요.");
       return;
     }
+    if (hasRoster && stageProblem(stages)) {
+      setError(stageProblem(stages));
+      return;
+    }
     if (!isEdit && useRoster) {
       const names = roster.stages.map((st) => st.name.trim());
       if (names.length === 0) {
@@ -244,6 +271,37 @@ export default function EventForm({
       }
 
       const eventId = isEdit ? initial!.id : (data as string);
+
+      // 이미 붙은 명단은 단계와 공개 범위만 여기서 고칩니다.
+      // 학생을 담고 빼는 것은 명단 화면에서 합니다 — 여기선 학생이 안 보입니다.
+      if (hasRoster) {
+        const changed =
+          JSON.stringify(stages) !== JSON.stringify(initial!.stages);
+        if (changed) {
+          const { error: sErr } = await supabase.rpc("update_event_stages", {
+            p_event: eventId,
+            p_stages: stages.map((st) => ({
+              id: st.id ?? null,
+              name: st.name.trim(),
+              kind: st.kind,
+            })),
+          });
+          if (sErr) {
+            setError(rosterMessage(sErr.message));
+            return;
+          }
+        }
+        if (rosterVis !== initial!.rosterVisibility) {
+          const { error: vErr } = await supabase.rpc("set_roster_visibility", {
+            p_event: eventId,
+            p_mode: rosterVis,
+          });
+          if (vErr) {
+            setError(rosterMessage(vErr.message));
+            return;
+          }
+        }
+      }
 
       // 진행 명단은 일정이 만들어진 뒤에 붙입니다.
       // 여기서 실패해도 일정은 남으므로, 상세 화면에서 이어서 설정할 수 있습니다.
@@ -632,6 +690,64 @@ export default function EventForm({
                 <span className="block pl-4 text-xs text-slate-500">{hint}</span>
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {hasRoster && (
+        <div className="rounded-lg border border-slate-300 bg-white p-4">
+          <p className="mb-1 text-sm font-bold">진행 명단</p>
+          <p className="mb-3 text-xs text-slate-500">
+            학생을 담고 빼거나 단계를 옮기는 것은 일정 화면의 명단에서 합니다.
+            여기서는 단계와 공개 범위만 고칩니다.
+          </p>
+
+          <StageList
+            value={stages}
+            onChange={setStages}
+            lockedIds={new Set(initial!.stages.map((st) => st.id!).filter(Boolean))}
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            이름을 고쳐도 그 단계에 있던 학생은 그대로 남습니다. 학생이 있는 단계는
+            지울 수 없으니, 명단 화면에서 먼저 옮기세요.
+          </p>
+
+          <p className="mb-1.5 mt-4 text-sm font-medium">누가 명단을 볼 수 있나</p>
+          <div className="space-y-1.5">
+            {(
+              [
+                [
+                  "assignees",
+                  "담당자만",
+                  "담당자 · 부장 · 관리자만 명단 전체를 봅니다. 담임에게는 자기 반 학생만 보입니다.",
+                ],
+                ["school", "전 교직원", "그 학교 선생님 누구나 명단 전체를 봅니다."],
+              ] as Array<["assignees" | "school", string, string]>
+            ).map(([v, label, hint]) => {
+              const blocked = v === "school" && !canOpenRoster;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  disabled={blocked}
+                  onClick={() => setRosterVis(v)}
+                  className={`block w-full rounded-lg border px-3 py-2 text-left disabled:opacity-40 ${
+                    rosterVis === v ? "border-slate-900 bg-slate-50" : "border-slate-200"
+                  }`}
+                >
+                  <span className="block text-sm font-medium">
+                    {rosterVis === v ? "● " : "○ "}
+                    {label}
+                    {blocked && (
+                      <span className="ml-1 text-xs font-normal text-slate-400">
+                        (부장 · 관리자만)
+                      </span>
+                    )}
+                  </span>
+                  <span className="block pl-4 text-xs text-slate-500">{hint}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

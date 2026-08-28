@@ -48,9 +48,15 @@ export default async function EditEventPage({
     supabase.from("event_attachments").select("file_path").eq("event_id", eventId).eq("kind", "file"),
   ]);
 
-  const [members, { data: assignees }] = await Promise.all([
+  const [members, { data: assignees }, { data: stageRows }] = await Promise.all([
     listMembers(schoolId, ctx.year.id),
     supabase.from("event_assignments").select("user_id").eq("event_id", eventId),
+    // 이미 붙은 명단이 있으면 편집 화면에서도 단계를 고칠 수 있어야 합니다.
+    supabase
+      .from("event_stages")
+      .select("id, name, kind")
+      .eq("event_id", eventId)
+      .order("position"),
   ]);
 
   const initial: EventInitial = {
@@ -76,6 +82,12 @@ export default async function EditEventPage({
     attachmentPaths: (attachments ?? [])
       .map((a) => a.file_path)
       .filter(Boolean) as string[],
+    rosterVisibility: (ev.roster_visibility ?? "assignees") as "assignees" | "school",
+    stages: (stageRows ?? []).map((st) => ({
+      id: st.id as string,
+      name: st.name as string,
+      kind: st.kind as "active" | "success" | "fail",
+    })),
   };
 
   return (
