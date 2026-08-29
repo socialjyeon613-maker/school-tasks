@@ -45,6 +45,8 @@ export interface EventInitial {
   stages: StageDraft[];
   /** 학생이 남아 있는 단계 id — 이 단계는 지울 수 없습니다 */
   stagesInUse: string[];
+  /** 명단에 담긴 학생 수 — 끌 때 무엇이 사라지는지 알리는 데 씁니다 */
+  rosterCount: number;
   rosterVisibility: "assignees" | "school";
 }
 
@@ -58,7 +60,8 @@ function rosterMessage(msg: string) {
   if (msg.includes("VISIBILITY_FORBIDDEN"))
     return "공개 범위를 전 교직원으로 넓히는 것은 부장 · 관리자만 할 수 있습니다.";
   if (msg.includes("FORBIDDEN")) return "진행 명단을 고칠 권한이 없습니다.";
-  return "진행 명단을 저장하지 못했습니다. " + msg;
+  // 저장 · 끄기 두 곳에서 함께 쓰므로 어느 쪽에도 어울리는 말로 둡니다.
+  return "진행 명단을 바꾸지 못했습니다. " + msg;
 }
 
 export default function EventForm({
@@ -133,6 +136,8 @@ export default function EventForm({
   const [rosterVis, setRosterVis] = useState<"assignees" | "school">(
     initial?.rosterVisibility ?? "assignees"
   );
+  // 끄면 학생 · 단계 · 이력이 사라집니다. 되돌릴 자리가 없어 한 번 더 묻습니다.
+  const [confirmOff, setConfirmOff] = useState(false);
   const [roster, setRoster] = useState<RosterDraft>({
     stages: [],
     visibility: "assignees",
@@ -224,6 +229,28 @@ export default function EventForm({
         .filter((c) => c.class_no >= from && c.class_no <= to)
         .map((c) => c.id)
     );
+  }
+
+  /** 진행 명단 끄기 — 학생 · 단계 · 이력이 사라집니다 */
+  async function turnRosterOff() {
+    setBusy(true);
+    setError("");
+    try {
+      const { error } = await createClient().rpc("disable_roster", {
+        p_event: initial!.id,
+      });
+      if (error) {
+        setError(rosterMessage(error.message));
+        return;
+      }
+      setConfirmOff(false);
+      router.push(`/schools/${schoolId}/events/${initial!.id}`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "알 수 없는 오류가 발생했습니다.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -786,6 +813,49 @@ export default function EventForm({
                 </button>
               );
             })}
+          </div>
+
+          {/* 끄기 — 잘못 켰거나 더는 필요 없어졌을 때 */}
+          <div className="mt-4 border-t border-slate-200 pt-3">
+            {confirmOff ? (
+              <div className="rounded-lg border border-rose-300 bg-rose-50 p-3">
+                <p className="mb-1 text-sm font-medium text-rose-900">
+                  진행 명단을 끌까요?
+                </p>
+                <p className="mb-3 text-sm text-rose-800">
+                  담아 둔 <b>학생 {initial!.rosterCount}명</b>과{" "}
+                  <b>단계 {initial!.stages.length}개</b>, 그동안 누가 언제 단계를
+                  옮겼는지의 기록이 <b>모두 사라집니다.</b> 일정 삭제와 달리
+                  휴지통에 남지 않아 <b>되돌릴 수 없습니다.</b> 일정 자체와 댓글 ·
+                  첨부파일은 그대로 있습니다.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmOff(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium"
+                  >
+                    그만두기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={turnRosterOff}
+                    disabled={busy}
+                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {busy ? "끄는 중…" : "끕니다"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmOff(true)}
+                className="text-sm text-slate-500 hover:text-rose-600"
+              >
+                진행 명단 끄기
+              </button>
+            )}
           </div>
         </div>
       )}

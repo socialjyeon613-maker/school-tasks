@@ -94,6 +94,7 @@ export default async function EditEventPage({
     stagesInUse: (rosterRows ?? [])
       .map((r) => r.stage_id as string | null)
       .filter((id): id is string => Boolean(id)),
+    rosterCount: (rosterRows ?? []).length,
   };
 
   return (

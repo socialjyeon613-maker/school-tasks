@@ -4,7 +4,7 @@ import fs from 'node:fs'
 const SUP = 'C:/forWife/학교업무관리/supabase'
 const db = await PGlite.create()
 
-for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`, `${SUP}/16_roster_setup.sql`, `${SUP}/17_roster_edit.sql`]) {
+for (const p of ['./00_supabase_stub.sql', `${SUP}/01_schema.sql`, `${SUP}/02_events.sql`, `${SUP}/03_participation.sql`, `${SUP}/04_event_edit.sql`, `${SUP}/05_teacher_access.sql`, `${SUP}/06_daily_participation.sql`, `${SUP}/07_task_assignees.sql`, `${SUP}/08_notices.sql`, `${SUP}/09_messages.sql`, `${SUP}/10_notifications.sql`, `${SUP}/11_import_events.sql`, `${SUP}/12_audit_softdelete.sql`, `${SUP}/13_search_ical.sql`, `${SUP}/14_roster.sql`, `${SUP}/15_roster_search.sql`, `${SUP}/16_roster_setup.sql`, `${SUP}/17_roster_edit.sql`, `${SUP}/18_roster_off.sql`]) {
   await db.exec(fs.readFileSync(p, 'utf8').replace(/create extension[^;]*;/gi, ''))
 }
 
@@ -908,4 +908,62 @@ try {
   await db.query(`select update_event_stages($1,$2::jsonb)`, [t3, JSON.stringify(rows)])
   console.log('   ❌ 남이 단계를 고침')
 } catch (e) { console.log(`   ✅ 담당자 아니면 단계 수정 불가: ${e.message}`) }
+}
+
+{
+console.log('')
+console.log('=== 25. 진행 명단 끄기 (18) ===')
+await asUser('hr1')
+const { id: t4 } = await one(`select create_event('${yearId}', '2027 예술고 지원 2', '2026-12-09'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '') as id`)
+const s4 = (await db.query(`select student_id from search_students_for_roster($1,'학생',null) limit 3`, [school])).rows.map(r=>r.student_id)
+await db.query(`select setup_roster($1, $2::jsonb, null, $3::uuid[])`,
+  [t4, JSON.stringify([{name:'준비',kind:'active'},{name:'합격',kind:'success'}]), s4])
+const st4 = await db.query(`select id from event_stages where event_id='${t4}' order by position`)
+await db.query(`select set_roster_stage($1, $2::uuid[], $3, null)`, [t4, [s4[0]], st4.rows[1].id])
+
+const before = await one(`select
+  (select count(*) from event_roster where event_id='${t4}')::int r,
+  (select count(*) from event_stages where event_id='${t4}')::int s,
+  (select count(*) from event_roster_history where event_id='${t4}')::int h`)
+console.log(`   끄기 전: 학생 ${before.r}명 · 단계 ${before.s}개 · 이력 ${before.h}건`)
+
+// 남이 끄지 못합니다
+await asUser('nonhr')
+try {
+  await db.query(`select disable_roster($1)`, [t4])
+  console.log('   ❌ 남이 껐음')
+} catch (e) { console.log(`   ✅ 담당자 아니면 못 끔: ${e.message}`) }
+
+await asUser('hr1')
+const gone = (await db.query(`select disable_roster($1) as r`, [t4])).rows[0]
+console.log(`   ✅ 껐음: ${JSON.stringify(gone.r)}`)
+
+const after = await one(`select
+  (select count(*) from event_roster where event_id='${t4}')::int r,
+  (select count(*) from event_stages where event_id='${t4}')::int s,
+  (select count(*) from event_roster_history where event_id='${t4}')::int h,
+  (select roster_visibility from events where id='${t4}') v`)
+console.log(`   ${after.r===0 && after.s===0 && after.h===0 ? '✅ 학생 · 단계 · 이력 모두 사라짐' : `❌ 남음 (${after.r}/${after.s}/${after.h})`}`)
+console.log(`   ${after.v==='assignees' ? '✅ 공개 범위가 기본으로 돌아감' : '❌ 공개 범위 '+after.v}`)
+
+// 일정 자체는 멀쩡해야 합니다
+const ev4 = await one(`select title, deleted_at from events where id='${t4}'`)
+console.log(`   ${ev4 && !ev4.deleted_at ? '✅ 일정은 그대로 남음: '+ev4.title : '❌ 일정이 사라짐'}`)
+
+// 껐다가 다시 켤 수 있어야 합니다
+await db.query(`select setup_roster($1, $2::jsonb, null, $3::uuid[])`,
+  [t4, JSON.stringify([{name:'신청',kind:'active'},{name:'완료',kind:'success'}]), s4])
+const again = await one(`select
+  (select count(*) from event_roster where event_id='${t4}')::int r,
+  (select count(*) from event_stages where event_id='${t4}')::int s`)
+console.log(`   ${again.r===3 && again.s===2 ? '✅ 다시 켜짐 (학생 3 · 단계 2)' : `❌ 다시 켜기 실패 (${again.r}/${again.s})`}`)
+
+// 명단이 없는 일감을 꺼도 터지지 않아야 합니다
+const { id: t5 } = await one(`select create_event('${yearId}', '명단 없는 일감', '2026-12-09'::date, null,
+  null, 'task', true, null, null, null, '', false, '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+  null, false, '{}'::uuid[], '') as id`)
+const none = (await db.query(`select disable_roster($1) as r`, [t5])).rows[0]
+console.log(`   ✅ 명단 없어도 조용히 넘어감: ${JSON.stringify(none.r)}`)
 }
